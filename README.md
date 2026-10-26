@@ -39,3 +39,7 @@ draw.io 그림은 `tools/drawio_fig.py`가 SVG와 draw.io 모델을 한 파일(`
 - 문장 규칙(`templates/writing-rules.md`)은 한국어 기술 문서를 위한 저자의 규칙이다. 엠대시 금지, 명사구 제목, 서술어로 끝나는 문장, AI 문장 틀 금지 등을 담는다. 팀의 규칙이 다르면 이 파일을 고친다.
 - 대상 저장소는 읽기만 한다. 모든 인용은 `book.toml`에 고정한 기준 커밋을 `git show`로 읽어 검사한다.
 - `tools/vendor/pagedjs/`는 Paged.js 0.4.3이며 MIT 라이선스를 따른다(`LICENSE.md`).
+
+## 라이선스
+
+MIT 라이선스(`LICENSE`)를 따른다. `tools/vendor/pagedjs/`는 Paged.js의 MIT 라이선스(`tools/vendor/pagedjs/LICENSE.md`)를 따른다.
