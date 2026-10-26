@@ -1,0 +1,30 @@
+# Settings of one book. The tools in tools/ read this file.
+
+[book]
+title = "Mooncake 구조"                      # title page, running heads, PDF title
+subtitle = "코드로 읽는 KV 캐시 전송 엔진"
+author = "홍길동"
+lang = "ko"                                  # "ko" turns on the Korean sentence checks
+file = "book"                                # output names: build/<file>.pdf, build/<file>-print.pdf
+title_meta = ["Mooncake Transfer Engine", "기준 커밋 0a09c221"]   # small lines at the bottom of the title page
+
+[source]
+repo = "/data/Mooncake"                      # git repository the book explains (read only)
+commit = "FULL-40-CHARACTER-HASH"            # the pinned commit (scripts/new_book.sh fills it in)
+# File extensions that citations like path/to/file.cc:123 may use.
+extensions = ["c", "cc", "cpp", "h", "hpp", "rs", "go", "py", "md", "toml", "txt", "sh", "json", "yaml", "yml", "cmake", "proto"]
+
+[layout]
+# Reading order. kind: front (preface), part (part opener), ch (chapter), app (appendix and index).
+order = [
+  ["front", "preface.md"],
+  ["part", "part1.md"], ["ch", "ch01-problem.md"], ["ch", "ch02-architecture.md"],
+  ["app", "appendix-a-source-map.md"], ["app", "index.md"],
+]
+
+[figures]
+plantuml_jar = "~/.vscode/extensions/jebbs.plantuml-2.18.1/plantuml.jar"
+
+[sample]
+# Running heads of the one-page template specimen (tools/build_sample.py, work/template-sample.md).
+heads = ["2장 전체 구조", "1부 문제 정의"]

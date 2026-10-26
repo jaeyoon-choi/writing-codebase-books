@@ -1,0 +1,78 @@
+html, body { margin: 0; width: 1920px; height: 1080px; background: #fff; overflow: hidden;
+  font-family: 'Noto Sans CJK KR', sans-serif; color: #1B1B1B; }
+.frame { position: relative; width: 1920px; height: 1080px; word-break: keep-all; overflow-wrap: break-word; }
+.kicker { position: absolute; left: 120px; top: 56px; font-size: 26px; color: #8A97A3; letter-spacing: 0.04em; }
+h1 { position: absolute; left: 120px; top: 92px; margin: 0; font: 700 62px 'Noto Serif CJK KR', serif; color: #1D5677; }
+.bar { position: absolute; left: 0; bottom: 0; height: 14px; background: #1D5677; }
+.pageno { position: absolute; right: 60px; bottom: 30px; font-size: 24px; color: #8A97A3; }
+.topline { position: absolute; left: 0; top: 0; width: 1920px; height: 12px; background: #1D5677; }
+[data-s] { transition: none; }
+.stat { position: absolute; top: 300px; width: 540px; height: 360px; border-radius: 20px; background: #F1F6F9;
+  border-top: 10px solid #1D5677; text-align: center; }
+.stat .num { font: 700 130px 'Noto Serif CJK KR', serif; color: #1D5677; margin-top: 70px; line-height: 1; }
+.stat .unit { font-size: 56px; margin-left: 10px; }
+.stat .lab { font-size: 40px; margin-top: 36px; }
+.src { position: absolute; font-size: 24px; color: #8A97A3; }
+.callout { position: absolute; left: 120px; right: 120px; padding: 30px 40px; background: #FBF6EA;
+  border-left: 12px solid #D9A441; font-size: 40px; line-height: 1.45; }
+.arrow { color: #D9A441; font-weight: 700; margin: 0 8px; }
+.wl { position: absolute; top: 250px; width: 540px; height: 360px; border: 3px solid #DDE3E8; border-radius: 20px;
+  text-align: center; padding-top: 36px; box-sizing: border-box; }
+.wt { font-size: 40px; font-weight: 700; margin-top: 16px; }
+.wd { font-size: 30px; color: #5B6B78; margin-top: 10px; }
+.reqs { position: absolute; left: 120px; right: 120px; top: 700px; display: flex; gap: 30px; }
+.req { flex: 1; background: #1D5677; color: #fff; border-radius: 16px; padding: 34px 20px; text-align: center; font-size: 42px; }
+.req b { display: block; font-size: 28px; opacity: 0.8; margin-bottom: 8px; }
+.formula { position: absolute; left: 120px; right: 120px; top: 640px; text-align: center; font: 700 56px 'Noto Serif CJK KR', serif;
+  color: #1D5677; }
+.fig { position: absolute; font-family: 'Noto Sans CJK KR', sans-serif; }
+.card { position: absolute; background: #F7F9FB; border-radius: 18px; border-top: 12px solid; padding: 40px 40px;
+  box-sizing: border-box; }
+.ct { font: 700 44px 'Noto Serif CJK KR', serif; margin-bottom: 30px; }
+.cb { font-size: 34px; line-height: 1.55; }
+.cost { color: #8A5A31; font-size: 30px; }
+.paths { position: absolute; left: 120px; right: 120px; top: 230px; }
+.path { font-size: 36px; padding: 22px 30px; border-radius: 14px; background: #F1F6F9; margin-bottom: 20px; }
+.path b { display: inline-block; width: 190px; color: #1D5677; }
+.path.usr b { color: #C8553D; }
+.cover { position: absolute; left: 110px; top: 70px; height: 940px; box-shadow: 0 10px 40px rgba(0,0,0,0.18); }
+.title-block { position: absolute; left: 960px; top: 250px; right: 100px; }
+.tb-kicker { font-size: 34px; color: #D9A441; font-weight: 700; letter-spacing: 0.06em; }
+.tb-title { font: 700 150px 'Noto Serif CJK KR', serif; color: #1D5677; margin-top: 10px; line-height: 1.1; }
+.tb-sub { font: 48px 'Noto Serif CJK KR', serif; margin-top: 24px; }
+.tb-author { font-size: 44px; font-weight: 700; margin-top: 120px; }
+.tb-note { font-size: 32px; color: #5B6B78; margin-top: 18px; }
+
+/* Components for the part lectures (slides/common.py). */
+.pts { position: absolute; left: 120px; right: 120px; margin: 0; padding: 0; list-style: none; font-size: 40px; line-height: 1.45; }
+.pts li { position: relative; padding-left: 46px; margin-bottom: 26px; }
+.pts li::before { content: ""; position: absolute; left: 0; top: 20px; width: 18px; height: 18px; border-radius: 4px; background: #1D5677; }
+.pts li b { color: #1D5677; }
+.pts li .sub { display: block; font-size: 32px; color: #5B6B78; margin-top: 4px; }
+.tbl { position: absolute; left: 120px; right: 120px; border-collapse: collapse; font-size: 32px; }
+.tbl th { background: #1D5677; color: #fff; font-weight: 700; text-align: left; padding: 16px 22px; }
+.tbl td { padding: 16px 22px; border-bottom: 2px solid #DDE3E8; vertical-align: top; }
+.tbl tr.hl td { background: #FBF6EA; font-weight: 700; }
+.tbl td.num, .tbl th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.flow { position: absolute; left: 120px; right: 120px; display: flex; align-items: stretch; gap: 0; }
+.fbox { flex: 1; background: #F1F6F9; border-radius: 16px; border-top: 10px solid #1D5677; padding: 26px 22px; text-align: center; }
+.fbox .ft { font: 700 36px 'Noto Serif CJK KR', serif; color: #1D5677; }
+.fbox .fd { font-size: 28px; color: #3B4A56; margin-top: 12px; line-height: 1.4; }
+.farr { width: 70px; display: flex; align-items: center; justify-content: center; font-size: 54px; color: #D9A441; font-weight: 700; }
+.tl { position: absolute; left: 140px; right: 140px; height: 300px; }
+.tl .axis { position: absolute; left: 0; right: 0; top: 150px; height: 6px; background: #8A97A3; }
+.tl .ev { position: absolute; top: 0; width: 0; }
+.tl .ev .dot { position: absolute; top: 138px; left: -15px; width: 30px; height: 30px; border-radius: 50%; background: #1D5677; }
+.tl .ev .t { position: absolute; top: 186px; left: -110px; width: 220px; text-align: center; font: 700 34px 'Noto Serif CJK KR', serif; color: #1D5677; }
+.tl .ev .d { position: absolute; top: 20px; left: -130px; width: 260px; text-align: center; font-size: 28px; line-height: 1.3; }
+.tl .ev.alt .d { top: 236px; }
+.tl .ev.alt .t { top: 92px; }
+.code { position: absolute; left: 120px; right: 120px; background: #F5F6F7; border: 2px solid #E1E4E7; border-radius: 14px;
+  padding: 26px 34px; font: 30px/1.5 'DejaVu Sans Mono', 'Noto Sans Mono CJK KR', monospace; white-space: pre; }
+.code .c { color: #8A97A3; }
+.code .k { color: #1D5677; font-weight: 700; }
+.bookfig { position: absolute; background: #fff; }
+.figcap { position: absolute; font-size: 24px; color: #8A97A3; }
+.note { position: absolute; font-size: 28px; color: #5B6B78; }
+.hl-amber { color: #B9802A; font-weight: 700; }
+.hl-coral { color: #C8553D; font-weight: 700; }

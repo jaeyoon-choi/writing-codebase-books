@@ -1,0 +1,143 @@
+/* Print template of the book: 183 x 235 mm, text block 143 x 191 mm. */
+
+@page {
+  size: 183mm 235mm;
+  margin: 22mm 18mm 22mm 22mm;
+  @bottom-center { content: counter(page); font: 8pt "Noto Sans CJK KR", sans-serif; color: #555; }
+}
+@page :left {
+  margin: 22mm 22mm 22mm 18mm;
+  @top-left { font: 7.5pt "Noto Sans CJK KR", sans-serif; color: #1D5677; vertical-align: bottom; padding-bottom: 3mm; }
+}
+@page :right {
+  @top-right { font: 7.5pt "Noto Sans CJK KR", sans-serif; color: #1D5677; vertical-align: bottom; padding-bottom: 3mm; }
+}
+@page cover { margin: 0; @bottom-center { content: none; } }
+@page title { @bottom-center { content: none; } }
+@page front { @bottom-center { content: counter(page, lower-roman); } }
+
+:root {
+  --ink: #1B1B1B;
+  --accent: #1D5677;
+  --soft: #5B6B78;
+  --rule: #C9D3DB;
+  --tint: #F1F6F9;
+  --code-bg: #F5F6F7;
+}
+
+html { font-family: "Noto Serif CJK KR", "Noto Serif", serif; font-size: 9.4pt; line-height: 1.72;
+       color: var(--ink); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { margin: 0; }
+section { break-before: page; }
+/* Parts, chapters and appendices start on a right-hand page. Folios are roman from the title
+   page and arabic from part 1 (section.body-start); build_pdf.py writes them after layout. */
+section.cover { page: cover; }
+section.titlepage { page: title; break-before: right; }
+section.toc { page: front; }
+section.toc, section.front, section.part, section.ch, section.app { break-before: right; }
+p { margin: 0 0 0.62em; text-align: justify; word-break: normal; line-break: strict; overflow-wrap: anywhere;
+    text-wrap: pretty; orphans: 2; widows: 2; }
+a { color: inherit; text-decoration: none; }
+strong { font-family: "Noto Sans CJK KR", sans-serif; font-weight: 700; font-size: 0.95em; }
+code { font-family: "DejaVu Sans Mono", "Noto Sans Mono CJK KR", monospace; font-size: 0.86em; background: var(--code-bg);
+       padding: 0.05em 0.25em; border-radius: 2px; overflow-wrap: anywhere; word-break: normal; }
+
+/* Cover and title page. */
+section.cover { width: 183mm; height: 235mm; }
+section.cover svg { width: 183mm; height: 235mm; display: block; }
+section.titlepage { padding-top: 55mm; }
+.tp-title { font-size: 34pt; font-weight: 700; color: var(--accent); }
+.tp-sub { font-size: 14pt; margin-top: 6mm; color: var(--ink); }
+.tp-author { font-size: 13pt; font-weight: 600; margin-top: 22mm; }
+.tp-meta { margin-top: 48mm; font: 9pt "Noto Sans CJK KR", sans-serif; color: var(--soft); line-height: 1.8; }
+
+/* Part opener: a page of its own. */
+section.part { padding-top: 48mm; }
+.part-head { border-top: 2.2mm solid var(--accent); padding-top: 8mm; margin-bottom: 14mm; }
+.part-num { font: 700 13pt "Noto Sans CJK KR", sans-serif; color: var(--accent); letter-spacing: 0.08em; }
+.part-head h1 { font-size: 28pt; margin: 3mm 0 0; line-height: 1.25; }
+section.part p { font-size: 9.8pt; }
+
+/* Chapter opener. */
+.chapter-head { margin: 18mm 0 10mm; border-bottom: 0.4mm solid var(--accent); padding-bottom: 5mm; }
+.ch-num { font: 700 11pt "Noto Sans CJK KR", sans-serif; color: #fff; background: var(--accent);
+          display: inline-block; padding: 1.2mm 3.5mm; border-radius: 1mm; letter-spacing: 0.05em; }
+.chapter-head h1 { font-size: 24pt; line-height: 1.28; margin: 4mm 0 0; }
+h1.plain-h1 { font-size: 20pt; margin: 14mm 0 8mm; color: var(--ink); border-bottom: 0.4mm solid var(--accent); padding-bottom: 4mm; }
+
+/* Section headings. */
+h2 { font: 700 13pt/1.4 "Noto Sans CJK KR", sans-serif; color: var(--accent); margin: 9mm 0 3mm;
+     break-after: avoid; }
+h3 { font: 700 10.5pt/1.4 "Noto Sans CJK KR", sans-serif; margin: 6mm 0 2mm; break-after: avoid; }
+h4 { font: 700 9.6pt/1.4 "Noto Sans CJK KR", sans-serif; margin: 4mm 0 1.5mm; break-after: avoid; }
+
+/* Lists. */
+ul, ol { margin: 0 0 0.7em; padding-left: 5mm; }
+li { margin: 0.15em 0; }
+
+/* Boxes. */
+blockquote { margin: 4mm 0; padding: 3mm 4mm; background: var(--tint); border-left: 1.2mm solid var(--rule);
+             break-inside: avoid; font-size: 0.95em; }
+blockquote p:last-child { margin-bottom: 0; }
+blockquote.box > p:first-child strong { display: block; font-size: 1em; margin-bottom: 1.5mm; }
+blockquote.key { background: #EAF2F7; border-left-color: var(--accent); }
+blockquote.key > p:first-child strong { color: var(--accent); }
+blockquote.lesson { background: #FBF6EA; border-left-color: #C9A24B; }
+blockquote.lesson > p:first-child strong { color: #8A6A1E; }
+blockquote.tech { background: #F3F3F3; border-left-color: #8C8C8C; }
+p.invariant { background: #F4F1F8; border-left: 1.2mm solid #7D66A6; padding: 2.5mm 3.5mm; break-inside: avoid; }
+p.invariant strong { color: #5E4A87; margin-right: 1.5mm; }
+
+/* Code listings. */
+pre, .hl pre { font-family: "DejaVu Sans Mono", "Noto Sans Mono CJK KR", monospace; font-size: 7.4pt; line-height: 1.5;
+               background: var(--code-bg); border: 0.25mm solid #E1E4E7; border-radius: 1mm;
+               padding: 2.5mm 3mm; margin: 3mm 0 4mm; white-space: pre-wrap; overflow-wrap: anywhere;
+               word-break: break-all; }
+.hl { background: none; }
+pre code { background: none; padding: 0; font-size: 1em; display: block; }
+pre .ln { display: block; min-height: 1lh; }   /* min-height keeps empty lines */
+/* Listings do not break inside (see pre.cont-next below for long ones). */
+pre { break-inside: avoid; }
+/* A listing cut at a page end (build_pdf.py split_listings): open edge where it continues. */
+pre.cont-next { border-bottom-style: dashed; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+pre.cont-prev { border-top-style: dashed; border-top-left-radius: 0; border-top-right-radius: 0; }
+
+/* Tables. */
+table { border-collapse: collapse; width: 100%; margin: 3mm 0 4.5mm; font: 7.6pt/1.5 "Noto Sans CJK KR", sans-serif;
+        break-inside: auto; }
+thead { display: table-header-group; }
+tr { break-inside: avoid; }
+th { background: #E8EFF4; color: var(--accent); font-weight: 700; text-align: left; padding: 1.4mm 2mm;
+     border-top: 0.45mm solid var(--accent); border-bottom: 0.25mm solid var(--accent); }
+td { padding: 1.2mm 2mm; border-bottom: 0.2mm solid #DDE3E8; vertical-align: top; word-break: keep-all;
+     overflow-wrap: break-word; }
+/* A short first column (row labels) keeps its words whole. */
+td:first-child { min-width: 12mm; }
+/* break-word, not anywhere: the column stays as wide as the longest identifier segment. */
+td code, th code { font-size: 0.92em; overflow-wrap: break-word; }
+
+/* Figures. */
+figure.fig { margin: 3mm 0; text-align: center; break-inside: avoid; }
+/* 178 mm leaves room for the caption and figure margins in the 191 mm text block. */
+figure.fig img { max-width: 100%; max-height: 178mm; display: block; margin: 0 auto; }
+figure.textfig pre { text-align: left; margin: 0; }
+figcaption { font: 7.8pt/1.35 "Noto Sans CJK KR", sans-serif; color: var(--soft); margin-top: 1.5mm; }
+img { max-width: 100%; }
+
+/* Table of contents. */
+section.toc ul { list-style: none; padding: 0; margin: 0; }
+section.toc li a { display: flex; align-items: baseline; }
+section.toc .dots { flex: 1; border-bottom: 0.25mm dotted #9AA7B1; margin: 0 1.5mm; transform: translateY(-0.8mm); }
+section.toc .pg { font: 8pt "Noto Sans CJK KR", sans-serif; min-width: 7mm; text-align: right; }
+li.toc0 { font: 700 10pt "Noto Sans CJK KR", sans-serif; color: var(--accent); margin-top: 4mm; }
+li.toc1 { font: 700 9pt "Noto Sans CJK KR", sans-serif; margin-top: 1.6mm; }
+li.toc2 { font-size: 8.2pt; padding-left: 6mm; color: #333; }
+
+/* Back matter is denser. */
+section.app { font-size: 8.8pt; }
+section.app table { font-size: 7.2pt; }
+
+/* The index runs in two columns. */
+section.index ul { columns: 2; column-gap: 8mm; font-size: 8.2pt; line-height: 1.55; list-style: none; padding-left: 0; }
+section.index li { break-inside: avoid; padding-left: 3mm; text-indent: -3mm; margin: 0; }
+section.index h3 { column-span: all; }
