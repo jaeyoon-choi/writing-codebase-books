@@ -10,7 +10,7 @@ TITLE=${4:-"$(basename "$REPO") 구조"}; AUTHOR=${5:-"저자"}
 COMMIT=$(git -C "$REPO" rev-parse --verify "$REV^{commit}")
 [ -e "$BOOK/book.toml" ] && { echo "new_book.sh: $BOOK/book.toml exists" >&2; exit 1; }
 
-mkdir -p "$BOOK"/{tools,work/notes,work/reviews,work/approved,figures/src,spec}
+mkdir -p "$BOOK"/{tools,work/notes,work/reviews,work/approved,work/evidence,figures/src,spec}
 cp -r "$SKILL/tools/." "$BOOK/tools/"
 mv "$BOOK/tools/lecture" "$BOOK/lecture"
 mkdir -p "$BOOK/lecture/slides"
