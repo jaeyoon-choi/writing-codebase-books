@@ -50,6 +50,9 @@ def svg(b, color, art):
         f'fill="#555555">지음</tspan></text>',
         f'<text x="{W - 120}" y="{BAND_Y + BAND_H + 200}" font-family="{SANS}" font-size="32" fill="#666666" '
         f'text-anchor="end">{e(" · ".join(bk.get("title_meta", [])))}</text>',
+        # The manuscript version: tools/build_pdf.py fills this element at build time.
+        f'<text id="doc-version" x="{W - 120}" y="{BAND_Y + BAND_H + 250}" font-family="{SANS}" font-size="32" '
+        f'fill="#666666" text-anchor="end"></text>',
         "</svg>\n",
     ]
     return "\n".join(parts)

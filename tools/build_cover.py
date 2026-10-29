@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from build_pdf import BOOK, BUILD, Chrome  # noqa: E402
+from build_pdf import BOOK, BUILD, Chrome, with_version  # noqa: E402
 from make_fonts import make_fonts  # noqa: E402
 from pdf_boxes import set_boxes  # noqa: E402
 
@@ -28,7 +28,7 @@ def main():
     ap.add_argument("--out", default=str(BUILD / "cover-print.pdf"))
     args = ap.parse_args()
     BUILD.mkdir(exist_ok=True)
-    svg = (BOOK / "cover-print.svg").read_text(encoding="utf-8")
+    svg = with_version((BOOK / "cover-print.svg").read_text(encoding="utf-8"))
     svg = re.sub(r'(<svg[^>]*?) width="\d+" height="\d+"', r'\1 width="189mm" height="241mm"', svg, count=1)
     text = html.unescape(" ".join(re.findall(r">([^<]+)<", svg)))
     fonts = make_fonts(text, BUILD / "fonts")

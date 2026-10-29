@@ -84,9 +84,10 @@
 
 ## 8. 조판
 
-- `python3 -I tools/cover_template.py`로 표지(`cover.svg`, `cover-print.svg`)를 만든다. 그림이 있으면 `figures/cover-art.svg`에 둔다. 표지 그림은 시안을 PNG로 만들어 사용자에게 보이고 고르게 한다. 3FS 책에서는 여러 시안 중 프로젝트를 상징하는 동물(고래)을 선 해칭 판화풍으로 그린 시안을 사용자가 골랐다. 표지에는 저자 이름을 넣는다. 표지가 정해지면 `README.md` 맨 위의 표지 줄을 채운다.
+- `python3 -I tools/cover_template.py`로 표지(`cover.svg`, `cover-print.svg`)를 만든다. 그림이 있으면 `figures/cover-art.svg`에 둔다. 표지 그림은 시안을 PNG로 만들어 사용자에게 보이고 고르게 한다. 3FS 책에서는 여러 시안 중 프로젝트를 상징하는 동물(고래)을 선 해칭 판화풍으로 그린 시안을 사용자가 골랐다. 표지에는 저자 이름을 넣는다. 표지가 정해지면 `README.md` 맨 위의 표지 줄을 채운다. 표지의 원고 버전(`원고 버전 YYYY.MM.DD HH:MM`)은 `build_pdf.py`와 `build_cover.py`가 빌드할 때 원고(`*.md`, `figures/`)를 바꾼 마지막 커밋의 작성 시각으로 채운다. 작성 시각은 cherry-pick 뒤에도 그대로이므로 원격 커밋과 맞는다. 원고를 커밋한 뒤에 빌드하고, 커밋하지 않은 변경이 있으면 버전 뒤에 "이후 수정"이 붙는다.
 - `python3 -I tools/build_pdf.py`: 화면용 `build/<file>.pdf`. 한글 글꼴을 TrueType으로 바꿔 넣고(Type 3 글꼴 없음), Paged.js로 배치한 뒤 쪽마다 검사하고(`tools/qa_pages.js`), 쪽 끝에 홀로 남은 제목, 한 줄만 넘어간 문단, 큰 그림이나 리스팅 때문에 빈 쪽을 다음 배치에서 고친다. 남은 항목은 `build/<file>-qa.txt`에 있다.
 - `python3 -I tools/build_pdf.py --print`: 인쇄소용 내지(표지 없음, 도련 3mm, 재단선, TrimBox). `python3 -I tools/build_cover.py`: 인쇄용 앞표지.
+- 표 바로 위의 `표 N.M 제목` 문단은 캡션으로 조판되고, 쪽 끝에 홀로 남은 캡션은 제목처럼 다음 쪽으로 넘어간다. 캡션 번호와 참조는 `check_book.py --xref`가 검사한다.
 - 확인: `pdffonts`에 Type 3이 없는지, QA 파일에 넘침이나 사라진 내용(`lost`)이 없는지, 전 쪽을 접촉 인쇄(contact sheet)로 넘겨 보는지(에이전트에게 나눠 맡긴다).
 
 ## 9. 선택 단계

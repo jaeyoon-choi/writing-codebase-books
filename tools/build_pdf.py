@@ -39,6 +39,31 @@ BUILD = BOOK / "build"
 DEFAULT_JAR = Path(bookconf.conf().get("figures", {}).get(
     "plantuml_jar", "~/.vscode/extensions/jebbs.plantuml-2.18.1/plantuml.jar")).expanduser()
 TITLE = bookconf.book()["title"]
+# The manuscript: what the version on the cover describes (not the PDFs that a build rewrites).
+MANUSCRIPT = [":(glob)*.md", "figures"]
+
+
+def doc_version():
+    """`원고 버전 YYYY.MM.DD HH:MM`: the author time of the last commit that changed the manuscript
+    (kept by cherry-pick and rebase, unlike the hash), marked when the working tree has changes that
+    commit does not hold. Empty outside a git checkout."""
+    git = ["git", "-C", str(BOOK)]
+    try:
+        last = subprocess.run(git + ["log", "-1", "--date=format:%Y.%m.%d %H:%M", "--format=%ad", "--", *MANUSCRIPT],
+                              capture_output=True, text=True, check=True).stdout.strip()
+        dirty = subprocess.run(git + ["status", "--porcelain", "--", *MANUSCRIPT],
+                               capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return ""
+    if not last:
+        return ""
+    return f"원고 버전 {last}" + (" 이후 수정" if dirty else "")
+
+
+def with_version(svg):
+    """The cover SVG with its doc-version element (tools/cover_template.py) filled in."""
+    return re.sub(r'(<text id="doc-version"[^>]*>)(</text>)', lambda m: m.group(1) + html.escape(doc_version()) + m.group(2),
+                  svg, count=1)
 
 ORDER = bookconf.order()
 
@@ -159,6 +184,9 @@ def convert(kind, name, text, puml_names, toc, slug):
         return f'<blockquote class="box {cls}">\n<p><strong>{label}</strong>'
     body = re.sub(r"<blockquote>\s*<p><strong>([^<]+)</strong>", box, body)
     body = re.sub(r"<p><strong>(불변식 \d+\.\d+)</strong>", r'<p class="invariant"><strong>\1</strong>', body)
+    # Table captions: a `표 N.M 제목` paragraph right above a table (tools/check_book.py checks the numbers).
+    body = re.sub(r"<p>(표 (?:\d{1,2}|[A-Z])\.\d{1,3}) (.*?)</p>\s*<table>",
+                  r'<p class="tcap"><span class="tnum">\1</span>\2</p>\n<table>', body)
 
     body = add_breaks(body)
 
@@ -310,7 +338,7 @@ def build_html(jar, print_mode, fixes="", moves=(), splits=()):
     cover = ""
     if not print_mode and (BOOK / "cover.svg").exists():
         # Inline, so that its text uses the TrueType fonts below (text in an <img> SVG would not).
-        svg = (BOOK / "cover.svg").read_text(encoding="utf-8")
+        svg = with_version((BOOK / "cover.svg").read_text(encoding="utf-8"))
         svg = re.sub(r'(<svg[^>]*?) width="\d+" height="\d+"', r'\1 width="183mm" height="235mm"', svg, count=1)
         cover = f'<section id="cover" class="cover">{svg}</section>'
 

@@ -54,8 +54,8 @@
     // A figure is one unit: its caption must not go to another page.
     area.querySelectorAll('figure[data-split-to]').forEach((el) => add(n, 'figure-split', el));
 
-    // 2. A heading with nothing after it on its page.
-    area.querySelectorAll('h2, h3, h4').forEach((h) => {
+    // 2. A heading or table caption with nothing after it on its page.
+    area.querySelectorAll('h2, h3, h4, p.tcap').forEach((h) => {
       const hb = h.getBoundingClientRect().bottom;
       const after = blocks.some((b) => !b.contains(h) && !h.contains(b) && b.getBoundingClientRect().top >= hb - 1);
       if (!after) add(n, 'heading-at-bottom', h);
@@ -100,7 +100,8 @@
           } else {
             // Otherwise it floats below the following top-level blocks (paragraphs, lists,
             // listings, tables, boxes, h3 and h4 headings) that fit here, as a LaTeX float goes to
-            // the next page top; an h2 or another figure stops the run, and a heading never ends it.
+            // the next page top; an h2 or another figure stops the run, and a heading or a table
+            // caption never ends it (the figure would land between the caption and its table).
             item.fig = first.dataset.n;
             item.paras = [];
             let used = 0;
@@ -119,7 +120,8 @@
               used += h;
               item.paras.push(String(k));
             }
-            while (item.paras.length && /^H[34]$/.test(document.querySelector(`[data-n="${item.paras[item.paras.length - 1]}"]`).tagName))
+            const last = () => document.querySelector(`[data-n="${item.paras[item.paras.length - 1]}"]`);
+            while (item.paras.length && (/^H[34]$/.test(last().tagName) || last().classList.contains('tcap')))
               item.paras.pop();
           }
         }

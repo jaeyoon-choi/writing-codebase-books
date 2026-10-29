@@ -105,6 +105,10 @@ pre.cont-prev { border-top-style: dashed; border-top-left-radius: 0; border-top-
 /* Tables. */
 table { border-collapse: collapse; width: 100%; margin: 3mm 0 4.5mm; font: 7.6pt/1.5 "Noto Sans CJK KR", sans-serif;
         break-inside: auto; }
+/* A table caption sits above its table and stays on the same page as the first rows. */
+p.tcap { font: 7.8pt/1.4 "Noto Sans CJK KR", sans-serif; color: var(--ink); margin: 3.5mm 0 0; break-after: avoid; }
+p.tcap + table { margin-top: 1.2mm; }
+p.tcap .tnum { font-weight: 700; color: var(--accent); margin-right: 1.6mm; }
 thead { display: table-header-group; }
 tr { break-inside: avoid; }
 th { background: #E8EFF4; color: var(--accent); font-weight: 700; text-align: left; padding: 1.4mm 2mm;
@@ -143,6 +147,7 @@ section.evidence td { padding: 0.5mm 1.4mm; overflow-wrap: anywhere; }
 section.evidence td code { font-size: 1em; overflow-wrap: anywhere; }
 section.evidence td:first-child { min-width: 7mm; }
 section.evidence p { margin: 1.5mm 0; }
+section.evidence p.tcap { margin: 2.5mm 0 0; }
 
 /* The index runs in two columns. */
 section.index ul { columns: 2; column-gap: 8mm; font-size: 8.2pt; line-height: 1.55; list-style: none; padding-left: 0; }

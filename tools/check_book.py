@@ -11,8 +11,14 @@ Checks, per file:
   - in the concept sections of a chapter (kind "ch" in [layout] order), no paragraph or list item has more than
     MAX_CITES_PER_PARA citations (tables and `**불변식` paragraphs are exempt); the summary prints
     concept-section citations per 1,000 characters (cite/1k)
+  - in a chapter (chNN-*.md) or appendix (appendix-x-*.md), every table has a caption line
+    `표 N.M 제목` (`표 X.M` in appendix X) right above it, numbered 1, 2, ... in order; the
+    title is a noun phrase                                          [lang = "ko" for the title]
+  - the particle after `표 N.M` or `그림 N.M` agrees with how the number is read
+    (`표 4.1은`, `표 4.2는`)                                          [lang = "ko"]
 With several files, also checks that every `N.M절` reference names a
-numbered heading somewhere in the set.
+numbered heading and every `표 N.M` reference names a table caption
+somewhere in the set.
 
 Sources are read with `git show BASE:path`, so the working tree of the
 source checkout does not matter. The repository, commit and citation file
@@ -70,6 +76,27 @@ XREF = re.compile(r"(\d{1,2})\.(\d{1,2})절")
 HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
 IMAGE = re.compile(r"^!\[([^\]]*)\]\(([^)\s]+)\)\s*$")
 FIG_ALT = re.compile(r"^그림 \d+\.\d+ \S")
+TABLE_CAP = re.compile(r"^표 ((?:\d{1,2}|[A-Z])\.\d{1,3}) (\S.*)$")
+TABLE_REF = re.compile(r"표 ((?:\d{1,2}|[A-Z])\.\d{1,3})(?!\d)")
+NUM_PARTICLE = re.compile(r"((?:표|그림) (?:\d{1,2}|[A-Z])\.(\d{1,3}))([가-힣]+)")
+# Final consonant of the last digit as read in Korean (일, 이, 삼, ...): "" none, "l" ㄹ, "c" another one.
+DIGIT_FINAL = {"0": "c", "1": "l", "2": "", "3": "c", "4": "", "5": "", "6": "c", "7": "l", "8": "l", "9": ""}
+
+
+def particle_mismatch(final, word):
+    """True when the particle at the start of word does not fit a number whose reading ends in final."""
+    for after_consonant, after_vowel in (("은", "는"), ("을", "를"), ("과", "와"), ("이", "가")):
+        if word.startswith(after_consonant) and not final and after_consonant != "이":
+            return True
+        if word.startswith(after_vowel) and final:
+            return True
+    if word == "이" and not final:   # the subject particle; 이다, 이므로 after a vowel are the copula
+        return True
+    if word.startswith("으로"):
+        return final != "c"
+    if word.startswith("로"):
+        return final == "c"
+    return False
 NUM_HEADING = re.compile(r"^#{2,4}\s+(\d{1,2})\.(\d{1,2})\b")
 BAD_HEADING_END = re.compile(r"(다|다\.|니다|세요|어요|아요|까|\?|\.)$")
 SENT_OK_END = re.compile(r"(다|까|요|라|자|죠|오)\.$|(가|까|나|지)\?$|[:)\]`|]$|\.\)$|다:$|\.\"$|다\"$|다\([^)]*\)\.$|\.\*\*$|다\.\*$|다(\[\d+\])+\.$")
@@ -180,7 +207,7 @@ def is_chapter(name: str) -> bool:
     return kinds.get(name, "ch" if name.startswith("ch") else "") == "ch"
 
 
-def check_file(doc: Path, problems, headings, xrefs, stats):
+def check_file(doc: Path, problems, headings, xrefs, stats, captions, table_refs):
     text = doc.read_text(encoding="utf-8")
     lines = text.splitlines()
     in_fence = False
@@ -191,6 +218,13 @@ def check_file(doc: Path, problems, headings, xrefs, stats):
     prev_para = False
     last_full_paths = []
     chapter = is_chapter(doc.name)
+    # Tables of chapter N are numbered N.M, tables of appendix X are numbered X.M.
+    cm = re.match(r"ch(\d+)-", doc.name)
+    am = re.match(r"appendix-([a-z])-", doc.name)
+    table_prefix = str(int(cm.group(1))) if cm else am.group(1).upper() if am else None
+    tables = 0
+    caption = None      # (number, line) of a caption line still waiting for its table
+    in_table = False
     in_code_section = not chapter
     concept_chars = concept_cites = 0
 
@@ -241,6 +275,37 @@ def check_file(doc: Path, problems, headings, xrefs, stats):
                 problems.append(f"{where}: short citation with unknown file: {name}:{start}")
         for a, b in XREF.findall(raw):
             xrefs.append((int(a), int(b), where))
+        if KOREAN:
+            for m in NUM_PARTICLE.finditer(raw):
+                if particle_mismatch(DIGIT_FINAL[m.group(2)[-1]], m.group(3)):
+                    problems.append(f"{where}: particle does not fit the number: {m.group(1)}{m.group(3)[:2]}")
+        s = raw.strip()
+        tm = TABLE_CAP.match(s)
+        for ref in TABLE_REF.findall(raw[tm.end(1):] if tm else raw):
+            table_refs.append((ref, where))
+        if s.startswith("|"):
+            if not in_table and table_prefix:
+                tables += 1
+                expected = f"{table_prefix}.{tables}"
+                if caption is None or caption[1] != i - 2 or lines[i - 2].strip():
+                    problems.append(f"{where}: table without a caption line '표 {expected} 제목' "
+                                    f"and one blank line above it")
+                elif caption[0] != expected:
+                    problems.append(f"{doc.name}:{caption[1]}: table caption 표 {caption[0]}, expected 표 {expected}")
+                caption = None
+            in_table = True
+        else:
+            in_table = False
+        if caption is not None and s and not s.startswith("|"):
+            problems.append(f"{doc.name}:{caption[1]}: table caption is not followed by a table")
+            caption = None
+        if tm and table_prefix:
+            captions.add(tm.group(1))
+            if KOREAN and BAD_HEADING_END.search(tm.group(2)):
+                problems.append(f"{where}: table caption looks like a sentence: {tm.group(2)}")
+            caption = (tm.group(1), i)
+            prev_para = False
+            continue
 
         hm = HEADING.match(raw)
         if hm:
@@ -314,19 +379,23 @@ def check_file(doc: Path, problems, headings, xrefs, stats):
 def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument("files", nargs="+")
-    ap.add_argument("--xref", action="store_true", help="check N.M절 references across the given files")
+    ap.add_argument("--xref", action="store_true", help="check N.M절 and 표 N.M references across the given files")
     args = ap.parse_args(argv[1:])
     problems, headings, xrefs, stats = [], set(), [], []
+    captions, table_refs = set(), []
     for f in args.files:
         p = Path(f)
         if not p.is_file():
             problems.append(f"no such file: {f}")
             continue
-        check_file(p, problems, headings, xrefs, stats)
+        check_file(p, problems, headings, xrefs, stats, captions, table_refs)
     if args.xref:
         for a, b, where in xrefs:
             if (a, b) not in headings:
                 problems.append(f"{where}: reference to {a}.{b}절 but no such numbered heading")
+        for ref, where in table_refs:
+            if ref not in captions:
+                problems.append(f"{where}: reference to 표 {ref} but no such table caption")
     for p in problems:
         print(p)
     print()
