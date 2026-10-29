@@ -223,8 +223,11 @@ def check_file(doc: Path, problems, headings, xrefs, stats):
             prev_para = False
             continue
 
-        anchors = ANCHOR.findall(raw)
-        shorts = SHORT.findall(raw)
+        anchor_ms = list(ANCHOR.finditer(raw))
+        anchors = [m.groups() for m in anchor_ms]
+        # A top-level file such as README.md:30 matches both patterns; count it once.
+        shorts = [m.groups() for m in SHORT.finditer(raw)
+                  if not any(a.start() <= m.start() < a.end() for a in anchor_ms)]
         for path, start, end in anchors:
             check_range(path, start, end, where, problems)
             last_full_paths.append(path)
