@@ -7,6 +7,7 @@
 | 그림 | 형식 | 만드는 곳 |
 |---|---|---|
 | 구조 장의 구성 요소 그림, 장 도입의 위치 그림 N.1 | `.drawio.svg` | `figures/src/components.py` (기본 그림 하나와 장별 강조 표) |
+| 장 첫머리의 전체 그림 N.2(역할 이름의 부품과 단계 A, B, C), 구조 장의 디렉터리 계층 그림 | `.drawio.svg` | `figures/src/fig_<장>_<번호>.py` (집필 때 집필자가 그린다) |
 | 배치(노드, 프로세스, 디스크), 자료 배치(바이트, 블록, 청크의 위치), 설계 비교, 여러 장이 가리키는 상태 전이 | `.drawio.svg` | `figures/src/fig_<장>_<번호>.py` |
 | 참여자가 많아 PlantUML로는 인쇄 7pt를 지킬 수 없는 시퀀스 | `.drawio.svg` | `figures/src/fig_<장>_<번호>.py`에서 `tools/seqdiag.py` |
 | 그 밖의 시퀀스, 클래스 관계, 절차(활동), 한 장 안의 상태 | PlantUML 블록 | 원고 안 |

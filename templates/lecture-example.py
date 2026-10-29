@@ -107,15 +107,15 @@ SLIDES.append(dict(
 
 # 6. Events 1 and 2 (1.5) ------------------------------------------------------
 SLIDES.append(dict(
-    title="사건 1과 사건 2의 계산",
+    title="샘플 읽기와 체크포인트 쓰기의 계산",
     html=bookfig("fig-1-5-read-replicas.drawio.svg", 90, 250, w=1000)
-    + note("<b>사건 1</b> 512KiB 읽기 → 청크 5, 6 → 체인 2개, 후보 사본 6개 (노드 4대)", x=120, y=905)
-    + card(1140, 250, 660, 600, "사건 2 체크포인트 쓰기",
+    + note("<b>샘플 읽기</b> 512KiB → 청크 5, 6 → 체인 2개, 후보 사본 6개 (노드 4대)", x=120, y=905)
+    + card(1140, 250, 660, 600, "체크포인트 쓰기",
            "step-1000.pt에 16MiB<br>청크 16개 → 체인 16개<br>타깃 쓰기 16 × 3 = 48번<br>SSD에 쓰는 양 48MiB"
            "<br><span class='cost'>gpu1이 보내는 양 16MiB,<br>storage 사이 전달 32MiB</span>", 2, AMBER),
     steps=[
-        "예제 클러스터의 사건 1에서 gpu1이 오프셋 5.75메비바이트부터 512키비바이트를 읽으면, 읽기는 청크 5와 6으로 나뉘고 후보 사본은 노드 4대의 6개입니다.",  # 1.5절 표 1.9, 그림 1.5
-        "사건 2에서 체크포인트 파일에 16메비바이트를 쓰면 청크 16개가 체인 16개로 퍼지고, 타깃 쓰기 48번으로 SSD에 48메비바이트가 쓰입니다.",  # 1.5절 표 1.10
+        "예제 클러스터의 샘플 읽기에서 gpu1이 오프셋 5.75메비바이트부터 512키비바이트를 읽으면, 읽기는 청크 5와 6으로 나뉘고 후보 사본은 노드 4대의 6개입니다.",  # 1.5절 표 1.9, 그림 1.5
+        "체크포인트 쓰기에서 체크포인트 파일에 16메비바이트를 쓰면 청크 16개가 체인 16개로 퍼지고, 타깃 쓰기 48번으로 SSD에 48메비바이트가 쓰입니다.",  # 1.5절 표 1.10
     ]))
 
 # 7. Design decisions (2.1) ----------------------------------------------------
@@ -191,14 +191,14 @@ SLIDES.append(dict(
 row = "<div class='note' data-s='{s}' style='left:120px;top:{y}px;font-weight:700;color:{c}'>{t}</div>"
 SLIDES.append(dict(
     title="읽기와 쓰기 경로",
-    html=row.format(s=1, y=240, c=NAVY, t="사건 1 읽기 (청크 5, 6)")
+    html=row.format(s=1, y=240, c=NAVY, t="샘플 읽기 (청크 5, 6)")
     + flow([
         ("경로 조회", "meta가 레이아웃이 든<br>inode를 준다"),
         ("청크 분할", "청크 경계에서 자르고<br>체인을 계산한다"),
         ("사본 선택", "체인마다<br>타깃 하나"),
         ("RDMA WRITE", "storage가 gpu1<br>버퍼에 직접 쓴다"),
     ], top=290, s=1, height=210)
-    + row.format(s=2, y=560, c="#B9802A", t="사건 2 쓰기 (청크 0, 체인 900400003)")
+    + row.format(s=2, y=560, c="#B9802A", t="체크포인트 쓰기 (청크 0, 체인 900400003)")
     + flow([
         ("파일 생성", "meta가 inode와 세션을<br>트랜잭션 하나로"),
         ("머리로", "storage1이<br>RDMA READ로 당긴다"),
@@ -207,8 +207,8 @@ SLIDES.append(dict(
     ], top=610, s=2, height=210)
     + note("meta가 끼는 곳: 경로 조회, 생성, 닫기 &nbsp;·&nbsp; 타깃 쓰기 48번은 모두 클라이언트와 storage 사이", y=880, s=2),
     steps=[
-        "사건 1에서 FUSE 클라이언트는 경로 조회 때 받은 레이아웃으로 체인마다 타깃 하나를 고르고, 그 storage가 RDMA WRITE로 gpu1의 버퍼에 직접 씁니다.",  # 2.5절 그림 2.4
-        "사건 2의 청크 0은 머리인 storage1에서 꼬리인 storage5까지 전해지고, 꼬리에서 커밋된 뒤 응답이 거꾸로 돌아옵니다.",  # 2.6절 그림 2.5
+        "샘플 읽기에서 FUSE 클라이언트는 경로 조회 때 받은 레이아웃으로 체인마다 타깃 하나를 고르고, 그 storage가 RDMA WRITE로 gpu1의 버퍼에 직접 씁니다.",  # 2.5절 그림 2.4
+        "체크포인트 쓰기의 청크 0은 머리인 storage1에서 꼬리인 storage5까지 전해지고, 꼬리에서 커밋된 뒤 응답이 거꾸로 돌아옵니다.",  # 2.6절 그림 2.5
     ]))
 
 
@@ -224,7 +224,7 @@ def tl_events(events, s, start):
 
 
 SLIDES.append(dict(
-    title="사건 3의 장애 처리",
+    title="storage3 장애 처리",
     html='<div class="tl" style="top:300px"><div class="axis"></div>'
     + tl_events([
         (0.04, "t = 0", "storage3의 프로세스가<br>멈춘다"),
@@ -238,7 +238,7 @@ SLIDES.append(dict(
     + "</div>"
     + f'<div class="callout" data-s="2" style="top:740px;font-size:36px">최대 81초 = 판정 70초 + 체인 저장 1초 + 라우팅 정보 주기 10초</div>',
     steps=[
-        "사건 3에서는 사건 2의 쓰기 도중 storage3의 프로세스가 멈춥니다. mgmtd는 하트비트가 60초 동안 끊긴 노드를 10초마다 하는 검사에서 장애로 판정합니다.",  # 2.7절
+        "storage3 장애에서는 체크포인트 쓰기 도중 storage3의 프로세스가 멈춥니다. mgmtd는 하트비트가 60초 동안 끊긴 노드를 10초마다 하는 검사에서 장애로 판정합니다.",  # 2.7절
         "판정 뒤 storage3의 타깃은 체인 끝으로 옮겨지고, 다른 노드가 새 체인을 받기까지 최대 81초가 걸립니다. 다시 시작한 타깃은 밀린 청크를 따라잡은 뒤에야 읽기에 들어갑니다.",  # 2.7절 표, 그림 2.6
     ]))
 
@@ -248,12 +248,12 @@ SLIDES.append(dict(
     html=side_list([
         ("<b>요구</b>", "작업 하나가 전체 SSD의 대역폭을 합쳐 쓰고, 응용은 데이터가 어느 기계에 있는지 몰라도 된다", 1),
         ("<b>3FS의 답</b>", "청크 분산 배치, 위치 계산, FoundationDB에 메타데이터 위임", 1),
-        ("<b>예제 클러스터</b>", "노드 7대, 타깃 480개, 체인 160개에서 사건 1~3을 뒤의 장마다 다시 따라간다", 2),
+        ("<b>예제 클러스터</b>", "노드 7대, 타깃 480개, 체인 160개에서 샘플 읽기, 체크포인트 쓰기, storage3 장애를 뒤의 장마다 다시 따라간다", 2),
     ], left=120, top=250, size=40)
     + f'<div class="callout" data-s="2" style="top:800px"><b>다음: 2부 토대</b> <span class="arrow">·</span> 실행 모델, RPC와 직렬화, RDMA 전송</div>',
     steps=[
         "3FS는 작업 하나가 전체 SSD의 대역폭을 합쳐 쓰면서도 응용은 데이터의 위치를 몰라도 되도록, 청크를 흩어 놓고 위치를 계산하며 메타데이터를 FoundationDB에 맡깁니다.",  # 1.4절, 2.11절
-        "뒤의 장들은 같은 사건 1부터 3까지를 다시 따라갑니다. 2부에서는 모든 서비스가 함께 쓰는 실행 모델과 RPC, RDMA 전송을 봅니다.",  # part1.md, part2.md
+        "뒤의 장들은 같은 세 사건을 다시 따라갑니다. 2부에서는 모든 서비스가 함께 쓰는 실행 모델과 RPC, RDMA 전송을 봅니다.",  # part1.md, part2.md
     ]))
 
 # Wrap Korean text at word boundaries. The wrapper is static, so absolutely placed children

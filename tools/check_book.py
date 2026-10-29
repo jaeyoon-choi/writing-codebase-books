@@ -8,6 +8,9 @@ Checks, per file:
   - no em dash, no Mermaid, no hard-wrapped paragraphs
   - headings are noun phrases (no sentence or question endings)      [lang = "ko"]
   - paragraph sentences end with a predicate (heuristic: `다.` and friends)  [lang = "ko"]
+  - in the concept sections of a chapter (kind "ch" in [layout] order), no paragraph or list item has more than
+    MAX_CITES_PER_PARA citations (tables and `**불변식` paragraphs are exempt); the summary prints
+    concept-section citations per 1,000 characters (cite/1k)
 With several files, also checks that every `N.M절` reference names a
 numbered heading somewhere in the set.
 
@@ -57,6 +60,11 @@ SHORT = re.compile(r"(?<![\w/.+-])([A-Za-z0-9_+-]+\.(?:" + "|".join(re.escape(e)
 FENCE_OPEN = re.compile(r"^```(\w[\w+-]*)?\s*$")
 ORIGIN = re.compile(r"^\s*(?://|#|--)\s*(" + PATH_RE + r"):(\d+)\s*$")
 HANGUL = re.compile(r"[가-힣]")
+# A `##` section is a code section when its title starts with one of these
+# (after the N.M number); every other `##` section of a chapter is a concept section.
+CODE_SECTION = re.compile(r"^##\s+(?:\d{1,2}\.\d{1,2}\s+)?(?:코드|Code\b)")
+MAX_CITES_PER_PARA = 3
+INVARIANT = "**불변식"
 ELISION = re.compile(r"^\s*(//\s*\.\.\.|#\s*\.\.\.|\.\.\.|/\*\s*\.\.\.\s*\*/)\s*$")
 XREF = re.compile(r"(\d{1,2})\.(\d{1,2})절")
 HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
@@ -164,6 +172,14 @@ def check_listing(block, where, problems):
     return True
 
 
+def is_chapter(name: str) -> bool:
+    try:
+        kinds = {n: k for k, n in bookconf.order()}
+    except KeyError:
+        kinds = {}
+    return kinds.get(name, "ch" if name.startswith("ch") else "") == "ch"
+
+
 def check_file(doc: Path, problems, headings, xrefs, stats):
     text = doc.read_text(encoding="utf-8")
     lines = text.splitlines()
@@ -174,6 +190,9 @@ def check_file(doc: Path, problems, headings, xrefs, stats):
     prose_chars = code_lines = table_rows = figures = 0
     prev_para = False
     last_full_paths = []
+    chapter = is_chapter(doc.name)
+    in_code_section = not chapter
+    concept_chars = concept_cites = 0
 
     for i, raw in enumerate(lines, 1):
         where = f"{doc.name}:{i}"
@@ -204,10 +223,12 @@ def check_file(doc: Path, problems, headings, xrefs, stats):
             prev_para = False
             continue
 
-        for path, start, end in ANCHOR.findall(raw):
+        anchors = ANCHOR.findall(raw)
+        shorts = SHORT.findall(raw)
+        for path, start, end in anchors:
             check_range(path, start, end, where, problems)
             last_full_paths.append(path)
-        for name, start, end in SHORT.findall(raw):
+        for name, start, end in shorts:
             cands = [p for p in last_full_paths if p.rsplit("/", 1)[-1] == name]
             if not cands:
                 cands = basename_index().get(name, [])
@@ -220,6 +241,8 @@ def check_file(doc: Path, problems, headings, xrefs, stats):
 
         hm = HEADING.match(raw)
         if hm:
+            if len(hm.group(1)) == 2:
+                in_code_section = not chapter or bool(CODE_SECTION.match(raw))
             title = hm.group(2).strip()
             if KOREAN and BAD_HEADING_END.search(title) and not title.endswith("..."):
                 problems.append(f"{where}: heading looks like a sentence or question: {title}")
@@ -250,6 +273,14 @@ def check_file(doc: Path, problems, headings, xrefs, stats):
                     problems.append(f"{where}: figure alt text should start with '그림 N.M 제목': {alt}")
             prev_para = False
             continue
+        if body and not in_code_section and not s.startswith("<"):
+            cites = len(anchors) + len(shorts)
+            concept_chars += len(body)
+            concept_cites += cites
+            # An invariant must name the code that keeps it and the test that checks it.
+            if cites > MAX_CITES_PER_PARA and not body.startswith(INVARIANT):
+                problems.append(f"{where}: {cites} citations in one concept-section paragraph "
+                                f"(max {MAX_CITES_PER_PARA}; move the rest to a code-section table)")
         if LIST_ITEM.match(raw) or s.startswith("<") or s.startswith("!["):
             prose_chars += len(body)
             prev_para = False
@@ -272,8 +303,9 @@ def check_file(doc: Path, problems, headings, xrefs, stats):
     pages = (prose_chars / PROSE_CHARS_PER_PAGE + code_lines / CODE_LINES_PER_PAGE
              + table_rows / TABLE_ROWS_PER_PAGE + figures * FIGURE_PAGES)
     code_pages = code_lines / CODE_LINES_PER_PAGE
+    density = concept_cites * 1000 / concept_chars if concept_chars else 0
     stats.append((doc.name, prose_chars, code_lines, table_rows, figures, pages,
-                  (code_pages / pages * 100) if pages else 0))
+                  (code_pages / pages * 100) if pages else 0, density))
 
 
 def main(argv):
@@ -295,11 +327,11 @@ def main(argv):
     for p in problems:
         print(p)
     print()
-    print(f"{'file':40} {'chars':>7} {'code':>5} {'rows':>5} {'figs':>4} {'pages':>6} {'code%':>6}")
+    print(f"{'file':40} {'chars':>7} {'code':>5} {'rows':>5} {'figs':>4} {'pages':>6} {'code%':>6} {'cite/1k':>7}")
     total = 0.0
-    for name, c, cl, tr, fg, pg, cr in stats:
+    for name, c, cl, tr, fg, pg, cr, cd in stats:
         total += pg
-        print(f"{name:40} {c:7d} {cl:5d} {tr:5d} {fg:4d} {pg:6.1f} {cr:5.0f}%")
+        print(f"{name:40} {c:7d} {cl:5d} {tr:5d} {fg:4d} {pg:6.1f} {cr:5.0f}% {cd:7.1f}")
     print(f"{'total':40} {'':7} {'':5} {'':5} {'':4} {total:6.1f}")
     print(f"{len(problems)} problems")
     return 1 if problems else 0
