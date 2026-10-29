@@ -136,6 +136,13 @@ li.toc2 { font-size: 8.2pt; padding-left: 6mm; color: #333; }
 /* Back matter is denser. */
 section.app { font-size: 8.8pt; }
 section.app table { font-size: 7.2pt; }
+/* The evidence appendix is a lookup table of path:line citations: tighter rows, but no text below 7pt in print. */
+section.evidence table { font-size: 7pt; line-height: 1.32; margin: 1.5mm 0 3mm; }
+section.evidence th { padding: 0.8mm 1.4mm; }
+section.evidence td { padding: 0.5mm 1.4mm; overflow-wrap: anywhere; }
+section.evidence td code { font-size: 1em; overflow-wrap: anywhere; }
+section.evidence td:first-child { min-width: 7mm; }
+section.evidence p { margin: 1.5mm 0; }
 
 /* The index runs in two columns. */
 section.index ul { columns: 2; column-gap: 8mm; font-size: 8.2pt; line-height: 1.55; list-style: none; padding-left: 0; }

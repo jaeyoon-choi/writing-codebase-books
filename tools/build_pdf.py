@@ -288,6 +288,8 @@ def build_html(jar, print_mode, fixes="", moves=(), splits=()):
         if kind == "front":
             page_css.append(f"@page {pname} {{ @bottom-center {{ content: counter(page, lower-roman); }} }}")
         extra = " index" if name == "index.md" else ""
+        # The evidence appendix (moved path:line tables) is typeset densely; see book.css.
+        extra += " evidence" if "evidence" in name else ""
         extra += " body-start" if kind == "part" and first_part else ""
         first_part = first_part and kind != "part"
         sections.append(f'<section id="{sid}" class="{kind}{extra}">{body}</section>')
