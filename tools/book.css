@@ -37,10 +37,22 @@ section.toc { page: front; }
 section.toc, section.front, section.part, section.ch, section.app { break-before: right; }
 p { margin: 0 0 0.62em; text-align: justify; word-break: normal; line-break: strict; overflow-wrap: anywhere;
     text-wrap: pretty; orphans: 2; widows: 2; }
+/* The part of a paragraph before a page break keeps the lines Paged.js measured; otherwise its
+   last line can move off the page, out of sight, after Paged.js has placed the break: pretty
+   wrapping rebalances that line, Chrome's own widows rule moves it, and inline code that now ends
+   there adds its end padding. (The page checks handle orphans and widows.) */
+p[data-split-to] { text-wrap: wrap; text-align-last: justify; widows: 1; orphans: 1; }
+li[data-split-to] { widows: 1; orphans: 1; }
+code[data-split-to] { padding-right: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+p.ref[data-split-to] { text-align-last: auto; }
 a { color: inherit; text-decoration: none; }
 strong { font-family: "Noto Sans CJK KR", sans-serif; font-weight: 700; font-size: 0.95em; }
 code { font-family: "DejaVu Sans Mono", "Noto Sans Mono CJK KR", monospace; font-size: 0.86em; background: var(--code-bg);
        padding: 0.05em 0.25em; border-radius: 2px; overflow-wrap: anywhere; word-break: normal; }
+/* The -- of a flag with its first word, and a date (build_pdf.py add_breaks). */
+.nobr { white-space: nowrap; }
+/* Reference entries (build_pdf.py ref_list): a justified line would stretch around a long URL. */
+p.ref { text-align: left; }
 
 /* Cover and title page. */
 section.cover { width: 183mm; height: 235mm; }
@@ -105,6 +117,12 @@ pre.cont-prev { border-top-style: dashed; border-top-left-radius: 0; border-top-
 /* Tables. */
 table { border-collapse: collapse; width: 100%; margin: 3mm 0 4.5mm; font: 7.6pt/1.5 "Noto Sans CJK KR", sans-serif;
         break-inside: auto; }
+/* Any break in a table of three body rows or fewer leaves one row alone (build_pdf.py number_blocks).
+   A table that does break repeats its head row on the next page (build_pdf.py PAGED_JS). */
+table[data-short] { break-inside: avoid; }
+/* Column widths measured on the whole table (build_pdf.py PAGED_JS), the same on every page. */
+table[data-cols] { table-layout: fixed; }
+table[data-cols] th { box-sizing: border-box; }
 /* A table caption sits above its table and stays on the same page as the first rows. */
 p.tcap { font: 7.8pt/1.4 "Noto Sans CJK KR", sans-serif; color: var(--ink); margin: 3.5mm 0 0; break-after: avoid; }
 p.tcap + table { margin-top: 1.2mm; }
@@ -112,7 +130,8 @@ p.tcap .tnum { font-weight: 700; color: var(--accent); margin-right: 1.6mm; }
 thead { display: table-header-group; }
 tr { break-inside: avoid; }
 th { background: #E8EFF4; color: var(--accent); font-weight: 700; text-align: left; padding: 1.4mm 2mm;
-     border-top: 0.45mm solid var(--accent); border-bottom: 0.25mm solid var(--accent); }
+     border-top: 0.45mm solid var(--accent); border-bottom: 0.25mm solid var(--accent); word-break: keep-all;
+     overflow-wrap: break-word; }
 td { padding: 1.2mm 2mm; border-bottom: 0.2mm solid #DDE3E8; vertical-align: top; word-break: keep-all;
      overflow-wrap: break-word; }
 /* A short first column (row labels) keeps its words whole. */
@@ -151,5 +170,5 @@ section.evidence p.tcap { margin: 2.5mm 0 0; }
 
 /* The index runs in two columns. */
 section.index ul { columns: 2; column-gap: 8mm; font-size: 8.2pt; line-height: 1.55; list-style: none; padding-left: 0; }
-section.index li { break-inside: avoid; padding-left: 3mm; text-indent: -3mm; margin: 0; }
+section.index li { break-inside: avoid; padding-left: 3mm; text-indent: -3mm; margin: 0; word-break: keep-all; }
 section.index h3 { column-span: all; }

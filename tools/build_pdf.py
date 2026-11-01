@@ -71,8 +71,11 @@ PUML = re.compile(r"```plantuml\n(.*?)```\n", re.S)
 
 # Print style added to every PlantUML figure when the book is typeset: one text
 # size (12 px prints at 7 pt or more when 680 px spans the 143 mm text width),
-# wrapped messages and tighter spacing so figures stay narrow.
-PRINT_STYLE = """skinparam defaultFontSize 12
+# wrapped messages and tighter spacing so figures stay narrow. The font is one that
+# both Java (which measures the text) and Chrome (which draws it) have; with the
+# default sans-serif they pick different fonts and Chrome squeezes the text.
+PRINT_STYLE = """skinparam defaultFontName "Noto Sans"
+skinparam defaultFontSize 12
 skinparam sequenceGroupHeaderFontSize 12
 skinparam sequenceGroupFontSize 12
 skinparam maxMessageSize 120
@@ -127,20 +130,45 @@ def figure(src, caption):
     return f'\n<figure class="fig"><img src="{src}" alt="{cap}"{width}><figcaption>{cap}</figcaption></figure>\n'
 
 
-BREAK_AFTER = re.compile(r"(::|[/_.,:](?=[\w]))")
-PATHISH = re.compile(r"[\w.:/-]*[/_:][\w.:/-]+")
+LONG_TOKEN = re.compile(r"[\w.:/-]{15,}")
+# No break after the dot of a file extension, so that `h` or `cpp` never stands alone on a line.
+EXT = "|".join(bookconf.source().get("extensions", ["h", "cc", "cpp", "py"]) + ["html?"])
+BREAK_AFTER = re.compile(rf"(::|[/_:](?=\w)|\.(?!(?:{EXT})(?![A-Za-z0-9]))(?=\w))")
+# Between the words of a camelCase name, at least two letters on each side.
+CAMEL = re.compile(r"(?<=[a-z0-9]{2})(?=[A-Z][a-z0-9]{2})|(?<=[A-Z]{2})(?=[A-Z][a-z]{2})")
+# Kept on one line: the -- of a flag with its first word, and a date. (A line range such as
+# 1531-1537 may still break after its hyphen: kept whole, it stretches more justified lines.)
+NOBR = re.compile(r"(?<![\w-])--[A-Za-z][A-Za-z0-9]*|(?<![\d-])\d{4}-\d{2}-\d{2}(?![\d-])")
+
+
+def long_token(tok):
+    tok = CAMEL.sub("\0", tok)
+    if re.search(r"[/_:.]", tok):
+        tok = BREAK_AFTER.sub("\\1\0", tok)
+    return tok.replace("\0", "<wbr>")
 
 
 def add_breaks(body):
-    """Let long paths and identifiers wrap: add <wbr> after /, _, ., :: in text outside <pre> and tags."""
+    """Let long paths and identifiers wrap (<wbr>) and keep flags and dates whole, in text outside <pre> and tags."""
     out = []
     for part in re.split(r"(<pre[\s\S]*?</pre>|<[^>]+>)", body):
         if not part or part.startswith("<"):
             out.append(part)
             continue
-        out.append(PATHISH.sub(lambda m: BREAK_AFTER.sub(r"\1<wbr>", m.group(0)) if len(m.group(0)) > 14
-                               else m.group(0), part))
+        part = LONG_TOKEN.sub(lambda m: long_token(m.group(0)), part)
+        out.append(NOBR.sub(r'<span class="nobr">\g<0></span>', part))
     return "".join(out)
+
+
+URL = re.compile(r"https?://[^\s<>\"]*[^\s<>\".,;:)]")
+
+
+def ref_list(block):
+    """The entries ([n] ...) of a reference list: ragged right (a long URL would stretch a justified
+    line) and every URL set as code, as most chapters already write them."""
+    block = re.sub(r"<p>(?=\[\d+\])", '<p class="ref">', block)
+    return "".join(part if part.startswith("<") else URL.sub(r"<code>\g<0></code>", part)
+                   for part in re.split(r"(<code>[\s\S]*?</code>|<[^>]+>)", block))
 
 
 def convert(kind, name, text, puml_names, toc, slug):
@@ -150,7 +178,7 @@ def convert(kind, name, text, puml_names, toc, slug):
     def puml(m):
         nonlocal i
         src = m.group(1)
-        cap = re.search(r"^' (그림 \d+\.\d+ .+)$", src, re.M)
+        cap = re.search(r"^' (그림 [0-9A-Z]+\.\d+ .+)$", src, re.M)
         r = figure(puml_names.pop(0), cap.group(1) if cap else "")
         i += 1
         return r
@@ -187,6 +215,7 @@ def convert(kind, name, text, puml_names, toc, slug):
     # Table captions: a `표 N.M 제목` paragraph right above a table (tools/check_book.py checks the numbers).
     body = re.sub(r"<p>(표 (?:\d{1,2}|[A-Z])\.\d{1,3}) (.*?)</p>\s*<table>",
                   r'<p class="tcap"><span class="tnum">\1</span>\2</p>\n<table>', body)
+    body = re.sub(r"(<h2>[^<]*참고 문헌</h2>)([\s\S]*?)(?=<h[12][\s>]|\Z)", lambda m: m.group(1) + ref_list(m.group(2)), body)
 
     body = add_breaks(body)
 
@@ -218,31 +247,59 @@ def convert(kind, name, text, puml_names, toc, slug):
 
 
 def number_blocks(content):
-    """Give every p, h2-h4, figure, pre, list, table and box a data-n number, so that layout fixes can target one."""
-    n = 0
+    """Give every p, h2-h4, figure, pre, list, table and box a data-n number, every list item a
+    data-li number and every body row its row number in the table (data-r), so that layout fixes
+    can target one; mark tables of at most three body rows (data-short)."""
+    n = li = 0
 
     def tag(m):
         nonlocal n
         n += 1
         return f'<{m.group(1)} data-n="{n}"{m.group(2)}'
-    return re.sub(r"<(p|h2|h3|h4|figure|pre|ul|ol|table|blockquote)([\s>])", tag, content)
+
+    def item(m):
+        nonlocal li
+        li += 1
+        return f'<li data-li="{li}"{m.group(1)}'
+
+    def rows(m):
+        r = 0
+
+        def row(_):
+            nonlocal r
+            r += 1
+            return f'<tr data-r="{r}"'
+        return re.sub(r"<tr(?=[\s>])", row, m.group(0))
+    content = re.sub(r"<(p|h2|h3|h4|figure|pre|ul|ol|table|blockquote)([\s>])", tag, content)
+    content = re.sub(r"<li([\s>])", item, content)
+    content = re.sub(r"<tbody>[\s\S]*?</tbody>", rows, content)
+    # A table of at most three body rows would leave one row alone on a page if it broke: data-short
+    # keeps it whole (book.css).
+    return re.sub(r"<table [\s\S]*?</table>",
+                  lambda m: m.group(0) if 'data-r="4"' in m.group(0) else m.group(0).replace(">", " data-short>", 1),
+                  content)
 
 
-def split_listings(content, splits):
-    """Cut listing n into two listings after its first `at` lines (the part that fits on a page).
+def split_listings(content, cuts):
+    """Cut listing n into one listing per page at the line numbers cuts[n] (counted over the whole listing).
 
     Paged.js 0.4.3 loses the line at the break when it splits a pre itself, so listings never
-    break inside; the second part gets the number n + "b" and can be cut again."""
-    for n, at in splits:
+    break inside. Part k of listing n is numbered n with k "b"s and carries data-l, the number of
+    its first line, so that the page checks can name a cut by its line in the whole listing."""
+    for n, at in cuts.items():
         m = re.search(rf'<div class="hl"><pre data-n="{n}"([^>]*)>([\s\S]*?)<code>([\s\S]*?)</code></pre></div>', content)
         if not m:
             continue
         lines = re.findall(r'<div class="ln">[\s\S]*?</div>', m.group(3))
-        if not 0 < at < len(lines):
+        bounds = [0] + sorted(c for c in set(at) if 0 < c < len(lines)) + [len(lines)]
+        if len(bounds) == 2:
             continue
-        head = f'<div class="hl"><pre data-n="{n}" class="cont-next"{m.group(1)}>{m.group(2)}<code>{"".join(lines[:at])}</code></pre></div>'
-        tail = f'<div class="hl"><pre data-n="{n}b" class="cont-prev"{m.group(1)}><code>{"".join(lines[at:])}</code></pre></div>'
-        content = content[:m.start()] + head + tail + content[m.end():]
+        parts = []
+        for k in range(len(bounds) - 1):
+            cls = " ".join(c for c, on in (("cont-prev", k > 0), ("cont-next", k < len(bounds) - 2)) if on)
+            parts.append(f'<div class="hl"><pre data-n="{n}{"b" * k}" data-l="{bounds[k]}" class="{cls}"{m.group(1)}>'
+                         f'{m.group(2) if k == 0 else ""}<code>{"".join(lines[bounds[k]:bounds[k + 1]])}</code></pre></div>')
+        content = content[:m.start()] + "".join(parts) + content[m.end():]
     return content
 
 
@@ -266,23 +323,74 @@ def block_end(content, start):
 def move_figures(content, moves):
     """Move each figure below the top-level blocks that directly follow it, as a float would go.
 
-    moves: [(figure number, [numbers of the following blocks that fit before the page end])].
-    Only the leading run of blocks that really follow the figure, with nothing between, moves."""
-    for fig, blocks in moves:
+    moves: {figure number: [numbers of the following blocks that fit before the page end]}.
+    Only the leading run of blocks that really follow the figure, with nothing between, moves; a
+    listing cut into parts ends the run. The figure records the blocks it went past (data-moved)."""
+    for fig, blocks in moves.items():
         m = re.search(rf'\n?<figure data-n="{fig}"[\s\S]*?</figure>\n?', content)
         if not m:
             continue
-        end = m.end()
+        end, moved = m.end(), []
         for n in blocks:
-            if not re.match(rf'\s*(<(p|ul|ol|table|blockquote|h3|h4)|<div class="hl"><pre) data-n="{n}"[\s>]', content[end:]):
+            b = re.match(rf'\s*(<(p|ul|ol|table|blockquote|h3|h4)|<div class="hl"><pre) data-n="{n}"[\s>][^>]*', content[end:])
+            if not b or "cont-next" in b.group(0):
                 break
             end = block_end(content, end)
-        if end > m.end():
-            content = content[:m.start()] + content[m.end():end] + m.group(0) + content[end:]
+            moved.append(n)
+        if moved:
+            fig_html = m.group(0).replace(f'data-n="{fig}"', f'data-n="{fig}" data-moved="{" ".join(moved)}"', 1)
+            content = content[:m.start()] + content[m.end():end] + fig_html + content[end:]
     return content
 
 
-def build_html(jar, print_mode, fixes="", moves=(), splits=()):
+TEXT_W = "143mm"  # text block width of book.css (183 mm page, 22 + 18 mm margins)
+
+# Additions to Paged.js 0.4.3 for the tables it splits. Before layout, each table is laid out
+# whole at the text width and its column widths are fixed (book.css table[data-cols]); Paged.js
+# would lay out each part on its own, so the columns would move from page to page. During
+# layout, the part that continues a table on a new page gets a copy of the head row; the copy
+# goes in before the page is checked for overflow, so that its height counts.
+PAGED_JS = """
+async function fixTableColumns() {
+  const st = document.createElement('style');
+  st.textContent = 'body { width: %(w)s !important; }';
+  document.head.appendChild(st);
+  document.body.offsetHeight;
+  await document.fonts.ready;
+  const widths = [...document.querySelectorAll('table')].map((t) => {
+    const row = t.tHead && t.tHead.rows[0];
+    const total = t.getBoundingClientRect().width;
+    return row && total ? [t, [...row.cells].map((c) => c.getBoundingClientRect().width / total * 100)] : null;
+  }).filter(Boolean);
+  // Attributes, not inline styles: Paged.js takes an element with a style attribute for one that
+  // is not displayed, and then passes a heading's break-after: avoid on past the table.
+  for (const [t, w] of widths) {
+    t.setAttribute('data-cols', '');
+    [...t.tHead.rows[0].cells].forEach((c, k) => c.setAttribute('width', (Math.floor(w[k] * 1000) / 1000) + '%%'));
+  }
+  st.remove();
+}
+class RepeatTableHead extends Paged.Handler {
+  constructor(chunker, polisher, caller) { super(chunker, polisher, caller); this.tables = []; }
+  afterPageLayout(pageElement, page, breakToken) {
+    // The tables that the break is inside of (not a table that starts the next page).
+    this.tables = [];
+    const node = breakToken && breakToken.node;
+    for (let t = node && node.parentElement && node.parentElement.closest('table'); t;
+         t = t.parentElement && t.parentElement.closest('table')) this.tables.push(t);
+  }
+  layout(rendered) {
+    for (const src of this.tables) {
+      const t = rendered.querySelector(`table[data-ref="${src.dataset.ref}"]`);
+      if (t && !t.tHead && src.tHead) t.insertBefore(src.tHead.cloneNode(true), t.firstChild);
+    }
+  }
+}
+Paged.registerHandlers(RepeatTableHead);
+""" % {"w": TEXT_W}
+
+
+def build_html(jar, print_mode, fixes="", moves=None, cuts=None, breaks=()):
     docs = []
     all_puml = []
     for kind, name in ORDER:
@@ -343,7 +451,7 @@ def build_html(jar, print_mode, fixes="", moves=(), splits=()):
         cover = f'<section id="cover" class="cover">{svg}</section>'
 
     content = number_blocks(f"{cover}{title_page}{toc_html}{''.join(sections)}")
-    content = move_figures(split_listings(content, splits), moves)
+    content = move_figures(split_listings(content, cuts or {}), moves or {})
     plain = html.unescape(re.sub(r"<[^>]+>", "", content)) + "".join(re.findall(r'content: "([^"]*)"', "\n".join(page_css)))
     css = make_fonts(plain, BUILD / "fonts") + "\n"
     css += (BOOK / "tools" / "book.css").read_text(encoding="utf-8") + "\n" + "\n".join(page_css)
@@ -357,8 +465,11 @@ def build_html(jar, print_mode, fixes="", moves=(), splits=()):
     css += "\n.hl .err { border: none; }"   # tokens Pygments cannot lex (macro pastes) are not errors
     doc = (f'<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>{html.escape(TITLE)}</title>'
            f"<style>{css}</style>"
-           "<script>window.PagedConfig = { auto: true, after: (flow) => { window.__pagedDone = flow.total; } };</script>"
+           f"<script>window.__fixBreaks = {json.dumps(list(breaks))};</script>"
+           "<script>window.PagedConfig = { auto: true, before: () => fixTableColumns(), "
+           "after: (flow) => { window.__pagedDone = flow.total; } };</script>"
            '<script src="../tools/vendor/pagedjs/paged.polyfill.js"></script>'
+           f"<script>{PAGED_JS}</script>"
            f"</head><body>{content}</body></html>")
     return doc, toc
 
@@ -455,6 +566,21 @@ PAGE_LABELS = """(() => {
 })()"""
 
 
+# A listing cut whose two parts landed on one page (the page checks report it, and the next pass
+# takes the cut back): until then the parts are drawn as one box. This only shortens the page.
+JOIN_CUTS = """(() => {
+  let n = 0;
+  document.querySelectorAll('.pagedjs_page_content pre.cont-next').forEach((pre) => {
+    const next = document.querySelector(`.pagedjs_page_content pre[data-n="${pre.dataset.n}b"]`);
+    if (!next || pre.closest('.pagedjs_page') !== next.closest('.pagedjs_page')) return;
+    Object.assign(pre.style, {marginBottom: '0', paddingBottom: '0', borderBottomWidth: '0'});
+    Object.assign(next.style, {marginTop: '-1px', paddingTop: '0', borderTopWidth: '0'});
+    n++;
+  });
+  return n;
+})()"""
+
+
 def layout(html_path, pdf_path, report_path):
     chrome = Chrome(BUILD / "chrome-profile")
     try:
@@ -469,6 +595,7 @@ def layout(html_path, pdf_path, report_path):
             time.sleep(2)
         info = chrome.eval(PAGE_LABELS)
         issues = chrome.eval((BOOK / "tools" / "qa_pages.js").read_text(encoding="utf-8"))
+        info["joined"] = chrome.eval(JOIN_CUTS)
         chrome.pdf(pdf_path)
         warnings = [m for kind, m in chrome.console if kind in ("warning", "error")]
     finally:
@@ -478,36 +605,118 @@ def layout(html_path, pdf_path, report_path):
     return info, issues, warnings, time.time() - start
 
 
+PASSES = 5
+SHORT_TABLE = 6  # body rows: a table this short that would leave one row alone on a page is kept whole
+
+
 def fixes_for(issues):
     """Fixes for what the page checks found: a heading alone at the bottom of a page moves to the
-    next page, a paragraph with one line on a page stays whole when that costs at most five lines
-    of space (as does a block that runs past the page bottom), a figure that left a page mostly
-    empty shrinks to fit there when it is at most 5% too tall or else floats below the blocks
-    that fit there, a listing that did the same is cut where
-    the page ends, a table wider than the text lets its identifiers break anywhere, and a part
-    opener that runs onto a second page loses most of its top space. Returns (CSS rules, layout changes)."""
+    next page, as does a heading whose short lead line is all that precedes its listing or figure
+    there (a listing is cut instead when three lines of it fit), a paragraph or list item with one
+    line on a page stays whole when that costs at most five lines of space (as does a block that
+    runs past the page bottom), a figure that left a page mostly empty shrinks to fit there when it
+    is at most 5% too tall or else floats below the blocks that fit there, a listing that did the
+    same is cut where the page ends, a table that leaves one body row alone on a page stays whole
+    when short or else moves a row, a table wider than the text lets its identifiers break anywhere,
+    and a part opener that runs onto a second page loses most of its top space.
+
+    Returns (CSS rules as (selector, property, value, check that asked for it), layout changes).
+    A layout change adds or removes a listing cut ("cut", listing, line, line it replaces or None;
+    "uncut", listing, line), sets or narrows a figure move ("move", figure, blocks; "unmove",
+    figure, blocks kept, veto) or drops a forced page break ("drop", selector, veto)."""
     rules, changes = [], []
     for i in issues:
         if i["kind"] == "part-overflow" and i.get("sid"):
             # Paged.js rewrites #id to [data-id=...], so the class keeps this above section.part.
-            rules.append(f'section.part#{i["sid"]} {{ padding-top: 16mm; }}')
+            rules.append((f'section.part#{i["sid"]}', "padding-top", "16mm", "part"))
         if i.get("paras"):
             changes.append(("move", i["fig"], tuple(i["paras"])))
+        if "keep" in i:
+            changes.append(("unmove", i["fig"], tuple(i["keep"]), i.get("veto", False)))
         if i.get("shrink"):
-            rules.append(f'figure.fig[data-n="{i["shrink"]}"] img {{ max-height: {i["maxh"]}mm; }}')
+            rules.append((f'figure.fig[data-n="{i["shrink"]}"] img', "max-height", f'{i["maxh"]}mm', "shrink"))
         if i.get("split"):
-            changes.append(("split", i["split"], i["at"]))
-        if not i.get("n"):
+            changes.append(("cut", i["split"], i["at"], i.get("replace")))
+        if i.get("uncut"):
+            changes.append(("uncut", i["uncut"], i["at"]))
+        if i.get("drop"):
+            changes.append(("drop", i["drop"], i.get("veto", False)))
+        if i["kind"] == "table-split":
+            if i["total"] <= SHORT_TABLE:
+                rules.append((f'table[data-n="{i["n"]}"]', "break-inside", "avoid", "table"))
+            elif i.get("row"):
+                rules.append((f'table[data-n="{i["n"]}"] tr[data-r="{i["row"]}"]', "break-before", "page", "row"))
+            else:
+                rules.append((f'[data-n="{i["lead"]}"]', "break-before", "page", "table"))
+            continue
+        sel = i.get("sel") or (f'[data-n="{i["n"]}"]' if i.get("n") else None)
+        if not sel:
             continue
         if i["kind"] == "heading-at-bottom":
-            rules.append(f'[data-n="{i["n"]}"] {{ break-before: page; }}')
+            rules.append((sel, "break-before", "page", "heading"))
+        elif i["kind"] == "heading-lead-at-bottom" and not i.get("split"):
+            rules.append((sel, "break-before", "page", "lead"))
         elif i["kind"] == "overflow-x" and i["what"].startswith("table"):
-            rules.append(f'table[data-n="{i["n"]}"] code {{ overflow-wrap: anywhere; }}')
+            rules.append((f'table[data-n="{i["n"]}"] code', "overflow-wrap", "anywhere", "overflow"))
         elif i["kind"] == "overflow-y" and i.get("head"):
-            rules.append(f'[data-n="{i["head"]}"] {{ break-before: page; }}')
+            rules.append((f'[data-n="{i["head"]}"]', "break-before", "page", "overflow"))
         elif i["kind"] in ("orphan", "overflow-y") or (i["kind"] == "widow" and i.get("before", 99) <= 5):
-            rules.append(f'[data-n="{i["n"]}"] {{ break-inside: avoid; }}')
+            rules.append((sel, "break-inside", "avoid", i["kind"]))
     return rules, changes
+
+
+class Fixes:
+    """What the next pass applies: CSS rules by (selector, property), listing cuts and figure moves.
+
+    A change replaces the earlier one for the same target: a rule for the same selector and
+    property, a cut that a part of a listing moves (a part that continues a listing from the page
+    before takes more lines there), and a figure's new move. Cuts, moves and forced page breaks
+    that a later layout no longer needs are taken back; a move or break taken back because it
+    left a page mostly empty is not made again (vetoed)."""
+
+    def __init__(self):
+        self.rules, self.cuts, self.moves, self.vetoed = {}, {}, {}, set()
+
+    def state(self):
+        return repr((sorted(self.rules.items()), sorted((n, sorted(v)) for n, v in self.cuts.items()),
+                     sorted(self.moves.items())))
+
+    def css(self):
+        return "\n".join(f"{sel} {{ {prop}: {val}; }}" for (sel, prop), (val, _) in self.rules.items())
+
+    def breaks(self):
+        """The page breaks that fixes forced, for the page checks to take back when no longer needed."""
+        return [{"sel": sel, "why": why} for (sel, prop), (val, why) in self.rules.items()
+                if prop == "break-before" and why in ("heading", "lead", "table", "row")]
+
+    def apply(self, rules, changes):
+        for sel, prop, val, why in rules:
+            if ("rule", sel) not in self.vetoed:
+                self.rules[(sel, prop)] = (val, why)
+        for c in changes:
+            if c[0] == "cut":
+                _, n, at, old = c
+                lines = self.cuts.setdefault(n, set())
+                lines.discard(old)
+                lines.add(at)
+            elif c[0] == "uncut":
+                self.cuts.get(c[1], set()).discard(c[2])
+            elif c[0] == "move" and c[1] not in self.vetoed:
+                self.moves[c[1]] = c[2]
+            elif c[0] == "unmove":
+                _, fig, keep, veto = c
+                if keep:
+                    self.moves[fig] = keep
+                else:
+                    self.moves.pop(fig, None)
+                if veto:
+                    self.vetoed.add(fig)
+            elif c[0] == "drop":
+                self.rules.pop((c[1], "break-before"), None)
+                if c[2]:
+                    self.vetoed.add(("rule", c[1]))
+        for n in [n for n, lines in self.cuts.items() if not lines]:
+            del self.cuts[n]
 
 
 def main():
@@ -529,29 +738,33 @@ def main():
     pdf = Path(args.out or BUILD / f"{stem}.pdf")
     html_path = BUILD / f"{stem}.html"
 
-    # Lay out, fix what the page checks found, and lay out again (at most five passes).
-    fixes, changes = [], []
-    for attempt in range(5):
-        moves = [c[1:] for c in changes if c[0] == "move"]
-        splits = [c[1:] for c in changes if c[0] == "split"]
-        doc, toc = build_html(args.jar, args.print_mode, "\n".join(fixes), moves, splits)
+    # Lay out, fix what the page checks found, and lay out again (at most PASSES passes). Each pass
+    # also takes back the cuts, moves and forced breaks that its layout no longer needs, so the
+    # last layout keeps only the ones that still do their job.
+    fixes = Fixes()
+    for attempt in range(PASSES):
+        doc, toc = build_html(args.jar, args.print_mode, fixes.css(), fixes.moves, fixes.cuts, fixes.breaks())
         html_path.write_text(doc, encoding="utf-8")
         info, issues, warnings, secs = layout(html_path, pdf, BUILD / f"{stem}-qa.txt")
-        rules, found = fixes_for(issues)
-        new = [r for r in rules if r not in fixes]
-        new_changes = [c for c in found if c not in changes]
-        if not new and not new_changes or attempt == 4:
+        rules, changes = fixes_for(issues)
+        before = fixes.state()
+        kinds = {"rule": sum(fixes.rules.get((sel, prop), (None,))[0] != val for sel, prop, val, _ in rules)}
+        for c in changes:
+            kinds[c[0]] = kinds.get(c[0], 0) + 1
+        fixes.apply(rules, changes)
+        if fixes.state() == before:
             break
-        fixes += new
-        changes += new_changes
-        print(f"pass {attempt + 1}: {len(new)} break fixes, {len(new_changes)} figure moves and listing cuts",
-              file=sys.stderr)
+        if attempt == PASSES - 1:
+            print(f"pass {attempt + 1}: changes left unapplied: {kinds}", file=sys.stderr)
+            break
+        print(f"pass {attempt + 1}: {kinds}", file=sys.stderr)
     if args.print_mode:
         set_boxes(pdf, 3.0)
     kinds = {}
     for i in issues:
         kinds[i["kind"]] = kinds.get(i["kind"], 0) + 1
-    print(f"{pdf} ({info['pages']} pages, layout {secs:.0f} s); TOC entries without a page: {len(info['missing'])}")
+    print(f"{pdf} ({info['pages']} pages, layout {secs:.0f} s); TOC entries without a page: {len(info['missing'])}"
+          + (f"; listing cuts drawn as one box: {info['joined']}" if info["joined"] else ""))
     print("page checks:", ", ".join(f"{k} {v}" for k, v in sorted(kinds.items())) or "no issues",
           f"; console warnings: {len(warnings)}; details in {BUILD / (stem + '-qa.txt')}")
 
