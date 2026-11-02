@@ -19,9 +19,9 @@ description: Use when asked to write a book, book-length guide or chapter series
 | 3. 기준 자료 | `work/scenario.py`·`scenario.md`, `work/terms.md`, `work/outline.md`, `book.toml`의 장 순서 | 세 파일이 있음 |
 | 4. 집필 | 구조 장을 먼저 쓰고, 승인되면 구성 요소 그림과 나머지 장의 위치 그림을 `.drawio.svg`로 만든다. 그다음 장마다 에이전트 하나: 초고 → `check_book.py` 0건 → 독자 검증 → 검토 | 장마다 `Reviewed-by:` 줄, `work/approved/status.md`에 기록 |
 | 5. 마무리 원고 | 첫 장, 마지막 장, 부 도입, 부록, 찾아보기, 서문, 책 `README.md` | 검토 승인 |
-| 6. 전권 정리 | 미확인 항목 판정(`work/oq-triage-brief.md`)과 변경분 검토, `check_book.py --xref <전체>`, 분량 점검(덜어낼 후보를 사용자가 고름), 문체 정리(`work/style-brief.md`) | **`open-questions.md`의 모든 항목이 닫힘**, 변경분 `Reviewed-by:`, 전권 검사 0건 |
+| 6. 전권 정리 | 미확인 항목 판정(`work/oq-triage-brief.md`)과 변경분 검토, `check_book.py --xref <전체>`, 분량 점검(`work/trim-*-brief.md`, 덜어낼 후보를 사용자가 고름), 문체 정리(`work/style-brief.md`, 검토는 `work/style-review-brief.md`) | **`open-questions.md`의 모든 항목이 닫힘**, 변경분 `Reviewed-by:`, 전권 검사 0건 |
 | 7. 그림 | 아래 그림 형식 표의 `.drawio.svg` 대상을 모두 다시 그림(`work/figure-brief.md`), 남은 PlantUML은 인쇄 7pt 이상(`measure_puml.py`) | 라이브러리 경고 0, 측정 통과, 그림 검토 `Reviewed-by:` |
-| 8. 조판 | `build_pdf.py`, `build_pdf.py --print`, `cover_template.py`, `build_cover.py` | Type 3 글꼴 0개, 쪽 검사 통과, 사용자가 표지 시안을 고름 |
+| 8. 조판 | 책의 `tools/`를 스킬 도구와 맞춘 뒤 `build_pdf.py`, `build_pdf.py --print`, `cover_template.py`, `build_cover.py`, 전 쪽 넘겨보기(`work/pdf-review-brief.md`) | Type 3 글꼴 0개, 쪽 검사와 넘겨보기 결함 0, 사용자가 표지 시안을 고름, 세 PDF를 책 맨 위에 커밋하고 푸시함 |
 | 9. 선택 | 실측 부록, 5분 전체 요약 강의와 부별 강의 영상 | 사용자가 요청할 때 |
 
 ## 바꾸지 않는 규칙
@@ -66,3 +66,8 @@ description: Use when asked to write a book, book-length guide or chapter series
 | 예제 사건을 "사건 1, 2, 3"으로 부른다 | 무엇을 하는지 드러나는 이름을 붙인다("샘플 읽기", "storage3 장애") |
 | 소스 트리 설명을 부록에만 둔다 | 구조 장에 디렉터리 계층 그림, 프로세스와 `main()` 표, 빌드와 외부 라이브러리, 읽는 순서를 둔다 |
 | 다시 쓰는 에이전트가 고친 인용 줄 번호를 그대로 받는다 | 바뀐 인용은 주 세션이나 검토자가 `git show`로 하나씩 확인한다. 맞던 인용이 틀리게 바뀐 사례가 있다 |
+| 덜어내기 후보를 묶음마다 따로 반영한다 | "다른 장에 있다"를 이유로 지우는 후보를 반영 전에 묶음 사이에서 대조한다. 두 묶음이 같은 내용을 서로 미루며 함께 지우면 그 내용이 책에서 사라진다 |
+| 그림 번호를 다시 매기고 그림 파일 이름은 그대로 둔다 | 파일과 스크립트 이름도 새 번호로 바꾼다. 옛 이름이 남으면 `embed_figures.py`가 같은 번호의 다른 그림 블록을 그 파일로 바꿀 수 있다. `check_book.py`가 이미지 줄의 번호와 파일 이름을 대조한다 |
+| 문체 정리에서 두 문장을 합친다 | 표 참조, 인용, 조건이 원래 주장에 붙어 있는지 확인한다. 합치면서 다른 주장에 옮겨 붙는 것이 문체 검토의 가장 흔한 주요 발견이다 |
+| 0단계에 복사한 도구 그대로 조판한다 | 8단계 첫머리에 스킬의 `tools/`와 비교해 조판 도구를 맞춘다. 조판 결함의 원인이 도구이면 스킬 쪽에도 같은 수정을 옮긴다 |
+| 조판한 PDF를 `build/`에만 둔다 | `build/`는 git이 무시하므로 세 PDF를 책 맨 위로 복사해 커밋하고 푸시한다 |

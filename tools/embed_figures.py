@@ -29,7 +29,13 @@ def figure_files():
 def main():
     files = figure_files()
     done = set()
-    for doc in sorted(BOOK.glob("ch*.md")):
+    docs = sorted(BOOK.glob("ch*.md"))
+    # A file that an image line already shows belongs to the figure on that line. A PlantUML block with
+    # the number in its file name is then another figure (the numbers moved), and must not take the file.
+    embedded = {k for k, name in files.items()
+                if any(f"(figures/{name})" in d.read_text(encoding="utf-8") for d in docs)}
+    conflicts = []
+    for doc in docs:
         text = doc.read_text(encoding="utf-8")
 
         def repl(m):
@@ -38,6 +44,10 @@ def main():
                 return m.group(0)
             key = (int(cap.group(2)), int(cap.group(3)))
             if key not in files:
+                return m.group(0)
+            if key in embedded:
+                conflicts.append(f"{doc.name}: PlantUML figure {key[0]}.{key[1]} has the number of {files[key]}, "
+                                 f"which an image line already shows; rename that file to its figure number")
                 return m.group(0)
             done.add(key)
             return f"![{cap.group(1).strip()}](figures/{files[key]})\n"
@@ -52,6 +62,10 @@ def main():
         if k not in already:
             print(f"warning: no PlantUML block for figure {k[0]}.{k[1]} ({files[k]})", file=sys.stderr)
     print(f"replaced {len(done)} blocks, {len(already)} already embedded")
+    for c in conflicts:
+        print(f"error: {c}", file=sys.stderr)
+    if conflicts:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
