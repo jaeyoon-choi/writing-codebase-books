@@ -16,6 +16,12 @@ Checks, per file:
     title is a noun phrase                                          [lang = "ko" for the title]
   - the particle after `표 N.M` or `그림 N.M` agrees with how the number is read
     (`표 4.1은`, `표 4.2는`)                                          [lang = "ko"]
+  - a bare citation `:N` points inside the file named last before it (on the same line, else
+    earlier in the file, as in a table under a paragraph that names the file)
+  - a figure image line `![그림 N.M ...](figures/fig-A-B-name...)` uses the file of its own
+    number (A.B = N.M), so that a renumbered figure does not keep an old file name
+  - prose does not name a PlantUML box by its alias (`"label" as ALIAS`) when the figure
+    shows only the label
 With several files, also checks that every `N.M절` reference names a
 numbered heading and every `표 N.M` reference names a table caption
 somewhere in the set.
@@ -63,6 +69,11 @@ PATH_RE = (r"(?:(?:" + "|".join(_DIRS or ["src"]) + r")/[A-Za-z0-9_./+-]+"
 ANCHOR = re.compile(r"(?<![\w/])(" + PATH_RE + r"):(\d+)(?:-(\d+))?")
 # Short form used after a full path in the same paragraph: `Foo.cc:12`.
 SHORT = re.compile(r"(?<![\w/.+-])([A-Za-z0-9_+-]+\.(?:" + "|".join(re.escape(e) for e in EXTS) + r")):(\d+)(?:-(\d+))?")
+# Bare form after a named file earlier on the same line: `:3931`, `:12-20`.
+BARE = re.compile(r"`:(\d+)(?:-(\d+))?`")
+FIG_FILE = re.compile(r"^fig-([0-9a-z]+)-(\d+)-")
+FIG_NUM = re.compile(r"^그림 ([0-9A-Z]+)\.(\d+) ")
+PUML_ALIAS = re.compile(r'"([^"]+)"\s+as\s+(\w+)')
 FENCE_OPEN = re.compile(r"^```(\w[\w+-]*)?\s*$")
 ORIGIN = re.compile(r"^\s*(?://|#|--)\s*(" + PATH_RE + r"):(\d+)\s*$")
 HANGUL = re.compile(r"[가-힣]")
@@ -75,7 +86,7 @@ ELISION = re.compile(r"^\s*(//\s*\.\.\.|#\s*\.\.\.|\.\.\.|/\*\s*\.\.\.\s*\*/)\s*
 XREF = re.compile(r"(\d{1,2})\.(\d{1,2})절")
 HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
 IMAGE = re.compile(r"^!\[([^\]]*)\]\(([^)\s]+)\)\s*$")
-FIG_ALT = re.compile(r"^그림 \d+\.\d+ \S")
+FIG_ALT = re.compile(r"^그림 (?:\d+|[A-Z])\.\d+ \S")
 TABLE_CAP = re.compile(r"^표 ((?:\d{1,2}|[A-Z])\.\d{1,3}) (\S.*)$")
 TABLE_REF = re.compile(r"표 ((?:\d{1,2}|[A-Z])\.\d{1,3})(?!\d)")
 NUM_PARTICLE = re.compile(r"((?:표|그림) (?:\d{1,2}|[A-Z])\.(\d{1,3}))([가-힣]+)")
@@ -217,6 +228,7 @@ def check_file(doc: Path, problems, headings, xrefs, stats, captions, table_refs
     prose_chars = code_lines = table_rows = figures = 0
     prev_para = False
     last_full_paths = []
+    last_named = None   # the file that a bare `:N` on a later line refers to
     chapter = is_chapter(doc.name)
     # Tables of chapter N are numbered N.M, tables of appendix X are numbered X.M.
     cm = re.match(r"ch(\d+)-", doc.name)
@@ -227,6 +239,11 @@ def check_file(doc: Path, problems, headings, xrefs, stats, captions, table_refs
     in_table = False
     in_code_section = not chapter
     concept_chars = concept_cites = 0
+    # PlantUML aliases of this file: prose that names a box by its alias points at nothing the reader sees.
+    aliases = {}
+    for blk in re.findall(r"```plantuml\n(.*?)```", text, re.S):
+        for label, name in PUML_ALIAS.findall(blk):
+            aliases[name] = label
 
     for i, raw in enumerate(lines, 1):
         where = f"{doc.name}:{i}"
@@ -260,19 +277,39 @@ def check_file(doc: Path, problems, headings, xrefs, stats, captions, table_refs
         anchor_ms = list(ANCHOR.finditer(raw))
         anchors = [m.groups() for m in anchor_ms]
         # A top-level file such as README.md:30 matches both patterns; count it once.
-        shorts = [m.groups() for m in SHORT.finditer(raw)
-                  if not any(a.start() <= m.start() < a.end() for a in anchor_ms)]
-        for path, start, end in anchors:
+        short_ms = [m for m in SHORT.finditer(raw)
+                    if not any(a.start() <= m.start() < a.end() for a in anchor_ms)]
+        shorts = [m.groups() for m in short_ms]
+        named = []      # (position, path) of each citation that names its file, for the bare ones after it
+        for m in anchor_ms:
+            path, start, end = m.groups()
             check_range(path, start, end, where, problems)
             last_full_paths.append(path)
-        for name, start, end in shorts:
+            named.append((m.start(), path))
+        for m in short_ms:
+            name, start, end = m.groups()
             cands = [p for p in last_full_paths if p.rsplit("/", 1)[-1] == name]
             if not cands:
                 cands = basename_index().get(name, [])
-            if len(cands) >= 1:
-                check_range(cands[-1] if cands else name, start, end, where, problems)
+            if cands:
+                check_range(cands[-1], start, end, where, problems)
+                named.append((m.start(), cands[-1]))
             else:
                 problems.append(f"{where}: short citation with unknown file: {name}:{start}")
+        named.sort()
+        for m in BARE.finditer(raw):
+            before = [p for pos, p in named if pos < m.start()] or ([last_named] if last_named else [])
+            if before:
+                check_range(before[-1], m.group(1), m.group(2), where, problems)
+            else:
+                problems.append(f"{where}: bare citation `:{m.group(1)}` with no named file before it")
+        if named:
+            last_named = named[-1][1]
+        for tok in re.findall(r"`([A-Za-z_]\w*)`", raw):
+            label = aliases.get(tok)
+            if label is not None and tok not in re.sub(r"\\n|\s", "", label):
+                problems.append(f"{where}: `{tok}` is a PlantUML alias; name the box by its label: "
+                                f"{label.replace(chr(92) + 'n', ' ')}")
         for a, b in XREF.findall(raw):
             xrefs.append((int(a), int(b), where))
         if KOREAN:
@@ -293,8 +330,14 @@ def check_file(doc: Path, problems, headings, xrefs, stats, captions, table_refs
                 elif caption[0] != expected:
                     problems.append(f"{doc.name}:{caption[1]}: table caption 표 {caption[0]}, expected 표 {expected}")
                 caption = None
+            # Header cells are bold, and the embedded mono font has no bold Hangul, so Chrome emits Type 3 glyphs.
+            if not in_table and any(HANGUL.search(c) for c in re.findall(r"`([^`]+)`", s)):
+                problems.append(f"{where}: Hangul inside a code span in a table header (Type 3 font in the PDF)")
             in_table = True
         else:
+            # Python-Markdown folds such a line into the table, and a `>` box there vanishes from the print.
+            if in_table and s:
+                problems.append(f"{where}: text directly after a table (add a blank line)")
             in_table = False
         if caption is not None and s and not s.startswith("|"):
             problems.append(f"{doc.name}:{caption[1]}: table caption is not followed by a table")
@@ -339,6 +382,10 @@ def check_file(doc: Path, problems, headings, xrefs, stats, captions, table_refs
                 figures += 1
                 if not FIG_ALT.match(alt):
                     problems.append(f"{where}: figure alt text should start with '그림 N.M 제목': {alt}")
+                fm, nm = FIG_FILE.match(target.rsplit("/", 1)[-1]), FIG_NUM.match(alt)
+                if fm and nm and (fm.group(1), fm.group(2)) != (nm.group(1).lower(), nm.group(2)):
+                    problems.append(f"{where}: figure {nm.group(1)}.{nm.group(2)} uses the file of figure "
+                                    f"{fm.group(1)}.{fm.group(2)} ({target}); rename the file and its script")
             prev_para = False
             continue
         if body and not in_code_section and not s.startswith("<"):
@@ -403,8 +450,8 @@ def main(argv):
     total = 0.0
     for name, c, cl, tr, fg, pg, cr, cd in stats:
         total += pg
-        print(f"{name:40} {c:7d} {cl:5d} {tr:5d} {fg:4d} {pg:6.1f} {cr:5.0f}% {cd:7.1f}")
-    print(f"{'total':40} {'':7} {'':5} {'':5} {'':4} {total:6.1f}")
+        print(f"{name:40} {c:7d} {cl:5d} {tr:5d} {fg:4d} {pg:6.2f} {cr:5.0f}% {cd:7.1f}")
+    print(f"{'total':40} {'':7} {'':5} {'':5} {'':4} {total:6.2f}")
     print(f"{len(problems)} problems")
     return 1 if problems else 0
 

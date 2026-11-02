@@ -165,8 +165,15 @@ section.evidence th { padding: 0.8mm 1.4mm; }
 section.evidence td { padding: 0.5mm 1.4mm; overflow-wrap: anywhere; }
 section.evidence td code { font-size: 1em; overflow-wrap: anywhere; }
 section.evidence td:first-child { min-width: 7mm; }
+/* The last column holds section numbers such as 13.4: break between them, never inside one. */
+section.evidence td:last-child { min-width: 15mm; overflow-wrap: normal; word-break: keep-all; }
 section.evidence p { margin: 1.5mm 0; }
 section.evidence p.tcap { margin: 2.5mm 0 0; }
+/* Settings appendices: tables of five or six columns of paths and option names. */
+section.dense table { font-size: 7pt; line-height: 1.32; }
+section.dense th { padding: 0.8mm 1.2mm; }
+section.dense td { padding: 0.5mm 1.2mm; overflow-wrap: anywhere; }
+section.dense td code { font-size: 1em; }
 
 /* The index runs in two columns. */
 section.index ul { columns: 2; column-gap: 8mm; font-size: 8.2pt; line-height: 1.55; list-style: none; padding-left: 0; }

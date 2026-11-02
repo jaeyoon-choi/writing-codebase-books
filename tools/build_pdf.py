@@ -426,6 +426,8 @@ def build_html(jar, print_mode, fixes="", moves=None, cuts=None, breaks=()):
         extra = " index" if name == "index.md" else ""
         # The evidence appendix (moved path:line tables) is typeset densely; see book.css.
         extra += " evidence" if "evidence" in name else ""
+        # Settings appendices (kernel parameters, config keys) use the same small type.
+        extra += " dense" if any(k in name for k in ("parameters", "settings", "config")) else ""
         extra += " body-start" if kind == "part" and first_part else ""
         first_part = first_part and kind != "part"
         sections.append(f'<section id="{sid}" class="{kind}{extra}">{body}</section>')
