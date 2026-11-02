@@ -51,7 +51,8 @@ def build(name, nodes=(), edges=(), labels=None):
     hi_edges = set(edges)
 
     # 680 px wide with 12 px text, so the figure prints at 7 pt or more.
-    f = Fig(680, 630, name)
+    # Location figures (some nodes highlighted) gray out the rest; the base figure stays plain.
+    f = Fig(680, 630, name, spotlight=bool(nodes))
     f.group("gMeta", 20, 20, 640, 200, "meta node")
     f.group("gClient", 70, 290, 540, 120, "gpu1 (client node)")
     f.group("gStorage", 20, 460, 640, 160, "storage1 ~ storage5")

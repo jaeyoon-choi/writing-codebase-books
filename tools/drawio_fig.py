@@ -29,6 +29,10 @@ PAPER = "#FFFFFF"
 GROUP_FILL = "#F5F5F5"
 HI_FILL = "#DAE8FC"
 HI_INK = "#1F4E79"
+# Spotlight (location figures): the highlighted part is drawn inverted, dark fill and white text,
+# and the rest is grayed out, so the current part stands out in grayscale print too.
+DIM_LINE = "#B4B4B4"
+DIM_TEXT = "#808080"
 CHAR_W = 0.58    # average glyph width in em, used only to warn about overflow
 # Print rule: a figure is scaled to the text width (140 mm for a 183 x 235 mm
 # computer book). 12 px text on a canvas at most 680 px wide prints at 7 pt or more.
@@ -79,8 +83,9 @@ class Edge:
 
 
 class Fig:
-    def __init__(self, w: int, h: int, name: str):
+    def __init__(self, w: int, h: int, name: str, spotlight: bool = False):
         self.w, self.h, self.name = w, h, name
+        self.spotlight = spotlight
         self.boxes: dict[str, Box] = {}
         self.order: list[str] = []
         self.edges: list[Edge] = []
@@ -154,11 +159,11 @@ class Fig:
         return out
 
     def _svg_box(self, b: Box):
-        ink = HI_INK if b.hi else (SOFT if b.shape == "group" else INK)
-        fill = b.fill or (HI_FILL if b.hi else (GROUP_FILL if b.shape == "group" else PAPER))
+        line, ink, fill = self._box_colors(b)
         sw = 2.5 if b.hi else 1
         dash = ' stroke-dasharray="6 4"' if b.dashed else ""
-        common = f'fill="{fill}" stroke="{ink}" stroke-width="{sw}"{dash}'
+        common = f'fill="{fill}" stroke="{line}" stroke-width="{sw}"{dash}'
+        inner = PAPER if b.hi and self.spotlight else line
         x, y, w, h = b.x, b.y, b.w, b.h
         out = []
         if b.shape == "anchor":
@@ -178,7 +183,7 @@ class Fig:
                 f'A{w / 2},{ry} 0 0 1 {x},{y + h - ry} Z" {common}/>')
             out.append(
                 f'<path d="M{x},{y + ry} A{w / 2},{ry} 0 0 0 {x + w},{y + ry}" fill="none" '
-                f'stroke="{ink}" stroke-width="{sw}"/>')
+                f'stroke="{inner}" stroke-width="{sw}"/>')
         elif b.shape == "ellipse":
             out.append(f'<ellipse cx="{b.cx}" cy="{b.cy}" rx="{w / 2}" ry="{h / 2}" {common}/>')
         elif b.shape == "folder":
@@ -192,7 +197,7 @@ class Fig:
                 f'<path d="M{x},{y} L{x + w - f},{y} L{x + w},{y + f} L{x + w},{y + h} L{x},{y + h} Z" {common}/>')
             out.append(
                 f'<path d="M{x + w - f},{y} L{x + w - f},{y + f} L{x + w},{y + f}" fill="none" '
-                f'stroke="{ink}" stroke-width="{sw}"/>')
+                f'stroke="{inner}" stroke-width="{sw}"/>')
         lines = b.label.split("\n") if b.label else []
         weight = "bold" if (b.bold or b.hi or b.shape == "group") else "normal"
         if b.shape in ("group",) or (b.shape == "folder" and b.align == "top"):
@@ -212,10 +217,10 @@ class Fig:
 
     def _svg_edge(self, e: Edge):
         path = self._path(e)
-        ink = HI_INK if e.hi else INK
+        ink, text = self._edge_colors(e)
         sw = {"thick": 2.5, "solid": 1.2, "dashed": 1.2, "line": 1.2, "dashline": 1.2}[e.kind]
         if e.hi:
-            sw = round(sw * 1.5, 2)
+            sw = round(sw * (2 if self.spotlight else 1.5), 2)
         dash = ' stroke-dasharray="6 4"' if e.kind in ("dashed", "dashline") else ""
         pts = " ".join(f"{px:.1f},{py:.1f}" for px, py in path)
         out = [f'<polyline points="{pts}" fill="none" stroke="{ink}" stroke-width="{sw}"{dash}/>']
@@ -232,7 +237,7 @@ class Fig:
             hh = len(lines) * EFS * LINE + 2
             out.append(f'<rect x="{lx - wmax / 2:.1f}" y="{ly - hh / 2:.1f}" width="{wmax:.1f}" '
                        f'height="{hh:.1f}" fill="{PAPER}" stroke="none"/>')
-            out += self._svg_text(lx, ly, lines, EFS, color=ink, weight="bold" if e.hi else "normal")
+            out += self._svg_text(lx, ly, lines, EFS, color=text, weight="bold" if e.hi else "normal")
         return out
 
     @staticmethod
@@ -244,10 +249,23 @@ class Fig:
         return (f'<polygon points="{b[0]:.1f},{b[1]:.1f} {p1[0]:.1f},{p1[1]:.1f} '
                 f'{p2[0]:.1f},{p2[1]:.1f}" fill="{ink}" stroke="{ink}"/>')
 
+    def _box_colors(self, b: Box):
+        if b.hi:
+            return (HI_INK, PAPER, HI_INK) if self.spotlight else (HI_INK, HI_INK, b.fill or HI_FILL)
+        if b.shape == "group":
+            return SOFT, SOFT, b.fill or GROUP_FILL
+        if self.spotlight:
+            return DIM_LINE, DIM_TEXT, b.fill or PAPER
+        return INK, INK, b.fill or PAPER
+
+    def _edge_colors(self, e: Edge):
+        if e.hi:
+            return HI_INK, HI_INK
+        return (DIM_LINE, DIM_TEXT) if self.spotlight else (INK, INK)
+
     # ---- draw.io model --------------------------------------------------
     def _style_box(self, b: Box):
-        ink = HI_INK if b.hi else (SOFT if b.shape == "group" else INK)
-        fill = b.fill or (HI_FILL if b.hi else (GROUP_FILL if b.shape == "group" else PAPER))
+        line, ink, fill = self._box_colors(b)
         base = {
             "rect": "rounded=0;whiteSpace=wrap;",
             "round": "rounded=1;arcSize=12;whiteSpace=wrap;",
@@ -267,7 +285,7 @@ class Fig:
         bold = b.bold or b.hi or b.shape == "group"
         st = base + f"html=1;fontFamily={FONT};fontSize={b.size};fontColor={ink};"
         if b.shape not in ("text", "label", "anchor"):
-            st += f"fillColor={fill};strokeColor={ink};strokeWidth={2.5 if b.hi else 1};"
+            st += f"fillColor={fill};strokeColor={line};strokeWidth={2.5 if b.hi else 1};"
         if b.dashed:
             st += "dashed=1;"
         if bold:
@@ -275,12 +293,12 @@ class Fig:
         return st
 
     def _style_edge(self, e: Edge, path):
-        ink = HI_INK if e.hi else INK
+        ink, text = self._edge_colors(e)
         sw = {"thick": 2.5, "solid": 1.2, "dashed": 1.2, "line": 1.2, "dashline": 1.2}[e.kind]
         if e.hi:
-            sw = round(sw * 1.5, 2)
+            sw = round(sw * (2 if self.spotlight else 1.5), 2)
         st = (f"edgeStyle=none;html=1;rounded=0;strokeColor={ink};strokeWidth={sw};"
-              f"fontFamily={FONT};fontSize={EFS};fontColor={ink};labelBackgroundColor={PAPER};"
+              f"fontFamily={FONT};fontSize={EFS};fontColor={text};labelBackgroundColor={PAPER};"
               "exitPerimeter=0;entryPerimeter=0;")
         st += "endArrow=none;" if e.kind in ("line", "dashline") else "endArrow=block;endFill=1;endSize=8;"
         st += "startArrow=block;startFill=1;startSize=8;" if e.both else "startArrow=none;"
