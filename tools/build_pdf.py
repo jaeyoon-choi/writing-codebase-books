@@ -39,8 +39,9 @@ BUILD = BOOK / "build"
 DEFAULT_JAR = Path(bookconf.conf().get("figures", {}).get(
     "plantuml_jar", "~/.vscode/extensions/jebbs.plantuml-2.18.1/plantuml.jar")).expanduser()
 TITLE = bookconf.book()["title"]
-# The manuscript: what the version on the cover describes (not the PDFs that a build rewrites).
-MANUSCRIPT = [":(glob)*.md", "figures"]
+# The manuscript: what the version on the cover describes (not the PDFs that a build rewrites, and not
+# README.md, which records where the PDFs are and changes when they are replaced).
+MANUSCRIPT = [":(glob)*.md", "figures", ":(exclude)README.md"]
 
 
 def doc_version():
