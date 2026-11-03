@@ -608,7 +608,9 @@ def layout(html_path, pdf_path, report_path):
     return info, issues, warnings, time.time() - start
 
 
-PASSES = 5
+# Five passes left listing cuts mid-page and one-row table parts in the 490-page Mooncake book;
+# eight let them settle.
+PASSES = 8
 SHORT_TABLE = 6  # body rows: a table this short that would leave one row alone on a page is kept whole
 
 
