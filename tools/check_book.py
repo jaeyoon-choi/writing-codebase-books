@@ -26,6 +26,12 @@ With several files, also checks that every `N.M절` reference names a
 numbered heading and every `표 N.M` reference names a table caption
 somewhere in the set.
 
+With --cites-since REV (a commit of the book's own repository), also lists the
+citations that the given files had at REV and whose lines the citations of the
+same source file no longer cover: "gone" when none overlaps, "narrowed" when
+some do. The list is a report for the reviewer of a rewrite and does not count
+as problems, because a citation may go away with its claim.
+
 Sources are read with `git show BASE:path`, so the working tree of the
 source checkout does not matter. The repository, commit and citation file
 extensions come from book.toml ([source]); a citation path must start with a
@@ -423,10 +429,81 @@ def check_file(doc: Path, problems, headings, xrefs, stats, captions, table_refs
                   (code_pages / pages * 100) if pages else 0, density))
 
 
+def cited_ranges(text):
+    """(path, start, end, line number, column) of each citation, resolving `Foo.cc:12` and `:12` as check_file does."""
+    out, full_paths, last_named = [], [], None
+    for i, raw in enumerate(text.splitlines(), 1):
+        anchor_ms = list(ANCHOR.finditer(raw))
+        named = []
+        for m in anchor_ms:
+            full_paths.append(m.group(1))
+            named.append((m.start(), m.group(1), m.group(2), m.group(3)))
+        for m in SHORT.finditer(raw):
+            if any(a.start() <= m.start() < a.end() for a in anchor_ms):
+                continue
+            cands = [p for p in full_paths if p.rsplit("/", 1)[-1] == m.group(1)] or basename_index().get(m.group(1), [])
+            if cands:
+                named.append((m.start(), cands[-1], m.group(2), m.group(3)))
+        named.sort()
+        for col, path, s, e in named:
+            out.append((path, int(s), int(e or s), i, col))
+        for m in BARE.finditer(raw):
+            before = [p for pos, p, _, _ in named if pos < m.start()] or ([last_named] if last_named else [])
+            if before:
+                out.append((before[-1], int(m.group(1)), int(m.group(2) or m.group(1)), i, m.start()))
+        if named:
+            last_named = named[-1][1]
+    return out
+
+
+def uncovered(s, e, ranges):
+    """Whether some line of s..e lies outside every range."""
+    for a, b in sorted(ranges):
+        if a > s:
+            return True
+        s = max(s, b + 1)
+        if s > e:
+            return False
+    return True
+
+
+def cites_gone(files, rev, problems):
+    """[(file, line, path, start, end, excerpt, overlapping ranges now)] cited at rev and not covered now.
+
+    An empty last element means no citation of the same path overlaps the old range (gone);
+    otherwise the old range was narrowed, as when a broad citation stayed only as a few lines.
+    """
+    now, old = {}, []
+    for f in files:
+        p = Path(f)
+        if p.is_file():
+            for path, s, e, _, _ in cited_ranges(p.read_text(encoding="utf-8")):
+                now.setdefault(path, []).append((s, e))
+        res = subprocess.run(["git", "show", f"{rev}:./{p.name}"], cwd=p.parent, capture_output=True, text=True)
+        if res.returncode != 0:
+            # A file added after rev has nothing to lose; any other failure is a bad rev or no repository.
+            if "exists on disk, but not in" not in res.stderr and "does not exist in" not in res.stderr:
+                problems.append(f"--cites-since {rev}: {res.stderr.strip()}")
+                return []
+            continue
+        lines = res.stdout.splitlines()
+        for path, s, e, i, col in cited_ranges(res.stdout):
+            old.append((p.name, i, path, s, e, lines[i - 1][max(0, col - 60):col].lstrip()))
+    gone, seen = [], set()
+    for name, i, path, s, e, excerpt in old:
+        if (path, s, e) in seen or not uncovered(s, e, now.get(path, [])):
+            continue
+        seen.add((path, s, e))
+        gone.append((name, i, path, s, e, excerpt, sorted(r for r in set(now.get(path, [])) if r[0] <= e and s <= r[1])))
+    return gone
+
+
 def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument("files", nargs="+")
     ap.add_argument("--xref", action="store_true", help="check N.M절 and 표 N.M references across the given files")
+    ap.add_argument("--cites-since", metavar="REV",
+                    help="list citations the files had at REV (a commit of the book's repository) and lost since")
     args = ap.parse_args(argv[1:])
     problems, headings, xrefs, stats = [], set(), [], []
     captions, table_refs = set(), []
@@ -443,8 +520,18 @@ def main(argv):
         for ref, where in table_refs:
             if ref not in captions:
                 problems.append(f"{where}: reference to 표 {ref} but no such table caption")
+    gone = cites_gone(args.files, args.cites_since, problems) if args.cites_since else []
     for p in problems:
         print(p)
+    if args.cites_since:
+        print()
+        span = lambda a, b: f"{a}-{b}" if a != b else f"{a}"
+        for name, i, path, s, e, excerpt, now in gone:
+            state = f"narrowed to {', '.join(span(a, b) for a, b in now[:4])}" if now else "gone"
+            print(f"{name}:{i} at {args.cites_since}: {path}:{span(s, e)} {state}, after \"{excerpt}\"")
+        n_gone = sum(1 for g in gone if not g[-1])
+        print(f"since {args.cites_since}: {n_gone} citations gone, {len(gone) - n_gone} narrowed "
+              f"(no citation of the same file covers all of their lines now)")
     print()
     print(f"{'file':40} {'chars':>7} {'code':>5} {'rows':>5} {'figs':>4} {'pages':>6} {'code%':>6} {'cite/1k':>7}")
     total = 0.0

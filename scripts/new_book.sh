@@ -15,7 +15,7 @@ cp -r "$SKILL/tools/." "$BOOK/tools/"
 mv "$BOOK/tools/lecture" "$BOOK/lecture"
 mkdir -p "$BOOK/lecture/slides"
 for t in writing-rules analysis-brief writer-brief reader-brief review-brief style-brief style-review-brief figure-brief oq-triage-brief \
-         trim-candidates-brief trim-brief trim-review-brief trim-fix-brief pdf-review-brief lecture-brief; do
+         trim-candidates-brief trim-brief trim-review-brief trim-fix-brief full-review-brief pdf-review-brief lecture-brief; do
   cp "$SKILL/templates/$t.md" "$BOOK/work/$t.md"
 done
 cp "$SKILL/templates/figure-example.py" "$BOOK/work/figure-example.py"

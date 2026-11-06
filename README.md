@@ -29,7 +29,7 @@ draw.io 그림은 `tools/drawio_fig.py`가 SVG와 draw.io 모델을 한 파일(`
 |---|---|
 | `SKILL.md` | 단계와 관문, 바꾸지 않는 규칙, 그림 형식, 흔한 실수 |
 | `stages.md` | 단계별 절차와 명령 |
-| `templates/` | 분석 설계와 분석 지침, 책 설계 틀, 집필, 독자 검증, 검토, 문체 정리, 그림, 미확인 항목 정리, 강의 지침, 문장 규칙(`writing-rules.md`) |
+| `templates/` | 분석 설계와 분석 지침, 책 설계 틀, 집필, 독자 검증, 검토, 문체 정리, 덜어내기, 전권 독립 검토, 그림, PDF 넘겨보기, 미확인 항목 정리, 강의 지침, 문장 규칙(`writing-rules.md`) |
 | `tools/` | 인용 검사기(`check_book.py`), 조판(`build_pdf.py`), 표지, 그림, 강의 빌드 |
 | `scripts/new_book.sh` | 새 책 디렉터리를 만들고 도구와 지침을 복사한다 |
 
