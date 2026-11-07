@@ -83,8 +83,16 @@ PATH_RE = (r"(?:(?:" + "|".join(_DIRS or ["src"]) + r")/[A-Za-z0-9_./+-]+"
 ANCHOR = re.compile(r"(?<![\w/])(" + PATH_RE + r"):(\d+)(?:-(\d+))?")
 # Short form used after a full path in the same paragraph: `Foo.cc:12`.
 SHORT = re.compile(r"(?<![\w/.+-])([A-Za-z0-9_+-]+\.(?:" + "|".join(re.escape(e) for e in EXTS) + r")):(\d+)(?:-(\d+))?")
-# Bare form after a named file earlier on the same line: `:3931`, `:12-20`.
-BARE = re.compile(r"`:(\d+)(?:-(\d+))?`")
+# Bare form after a named file earlier on the same line: `:3931`, `:12-20`,
+# or unquoted after a comma inside a citation: (Foo.cc:12, :30-41). The
+# unquoted form refers only to a file named earlier on the same line.
+BARE = re.compile(r"`:(\d+)(?:-(\d+))?`|(?<=, ):(\d+)(?:-(\d+))?(?![\w:])")
+
+
+def bare_refs(raw):
+    """(column, start, end, quoted) of each bare line reference on a line."""
+    for m in BARE.finditer(raw):
+        yield m.start(), m.group(1) or m.group(3), m.group(2) or m.group(4), m.group(1) is not None
 FIG_FILE = re.compile(r"^fig-([0-9a-z]+)-(\d+)-")
 FIG_NUM = re.compile(r"^그림 ([0-9A-Z]+)\.(\d+) ")
 PUML_ALIAS = re.compile(r'"([^"]+)"\s+as\s+(\w+)')
@@ -311,12 +319,14 @@ def check_file(doc: Path, problems, headings, xrefs, stats, captions, table_refs
             else:
                 problems.append(f"{where}: short citation with unknown file: {name}:{start}")
         named.sort()
-        for m in BARE.finditer(raw):
-            before = [p for pos, p in named if pos < m.start()] or ([last_named] if last_named else [])
+        for col, start, end, quoted in bare_refs(raw):
+            before = [p for pos, p in named if pos < col] or ([last_named] if last_named and quoted else [])
+            if not before and not quoted:
+                continue
             if before:
-                check_range(before[-1], m.group(1), m.group(2), where, problems)
+                check_range(before[-1], start, end, where, problems)
             else:
-                problems.append(f"{where}: bare citation `:{m.group(1)}` with no named file before it")
+                problems.append(f"{where}: bare citation `:{start}` with no named file before it")
         if named:
             last_named = named[-1][1]
         for tok in re.findall(r"`([A-Za-z_]\w*)`", raw):
@@ -458,10 +468,10 @@ def cited_ranges(text):
         named.sort()
         for col, path, s, e in named:
             out.append((path, int(s), int(e or s), i, col))
-        for m in BARE.finditer(raw):
-            before = [p for pos, p, _, _ in named if pos < m.start()] or ([last_named] if last_named else [])
+        for col, start, end, quoted in bare_refs(raw):
+            before = [p for pos, p, _, _ in named if pos < col] or ([last_named] if last_named and quoted else [])
             if before:
-                out.append((before[-1], int(m.group(1)), int(m.group(2) or m.group(1)), i, m.start()))
+                out.append((before[-1], int(start), int(end or start), i, col))
         if named:
             last_named = named[-1][1]
     return out
