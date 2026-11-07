@@ -24,7 +24,8 @@ Checks, per file:
     shows only the label
 With several files, also checks that every `N.M절` reference names a
 numbered heading and every `표 N.M` reference names a table caption
-somewhere in the set.
+somewhere in the set. References right after the companion book's name
+([book] companion, e.g. `본편 7.3절` in a summary edition) are not checked.
 
 With --cites-since REV (a commit of the book's own repository), also lists the
 citations that the given files had at REV and whose lines the citations of the
@@ -51,6 +52,13 @@ REPO = str(Path(bookconf.source()["repo"]).expanduser())
 BASE = bookconf.source()["commit"]
 KOREAN = bookconf.book().get("lang", "ko") == "ko"
 EXTS = bookconf.source().get("extensions", ["c", "cc", "cpp", "h", "hpp", "rs", "go", "py", "md", "toml", "txt"])
+# A summary edition names its full book (e.g. "본편"); `본편 7.3절` and `본편 표 7.3` point there, not here.
+COMPANION = bookconf.book().get("companion")
+
+
+def own_ref(text, start):
+    """Whether the reference at start belongs to this book, not to the companion book named just before it."""
+    return not (COMPANION and re.search(re.escape(COMPANION) + r"의? $", text[:start]))
 
 
 def _top_level():
@@ -316,16 +324,19 @@ def check_file(doc: Path, problems, headings, xrefs, stats, captions, table_refs
             if label is not None and tok not in re.sub(r"\\n|\s", "", label):
                 problems.append(f"{where}: `{tok}` is a PlantUML alias; name the box by its label: "
                                 f"{label.replace(chr(92) + 'n', ' ')}")
-        for a, b in XREF.findall(raw):
-            xrefs.append((int(a), int(b), where))
+        for m in XREF.finditer(raw):
+            if own_ref(raw, m.start()):
+                xrefs.append((int(m.group(1)), int(m.group(2)), where))
         if KOREAN:
             for m in NUM_PARTICLE.finditer(raw):
                 if particle_mismatch(DIGIT_FINAL[m.group(2)[-1]], m.group(3)):
                     problems.append(f"{where}: particle does not fit the number: {m.group(1)}{m.group(3)[:2]}")
         s = raw.strip()
         tm = TABLE_CAP.match(s)
-        for ref in TABLE_REF.findall(raw[tm.end(1):] if tm else raw):
-            table_refs.append((ref, where))
+        text = raw[tm.end(1):] if tm else raw
+        for m in TABLE_REF.finditer(text):
+            if own_ref(text, m.start()):
+                table_refs.append((m.group(1), where))
         if s.startswith("|"):
             if not in_table and table_prefix:
                 tables += 1

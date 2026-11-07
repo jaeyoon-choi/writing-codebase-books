@@ -7,6 +7,7 @@ author = "홍길동"
 lang = "ko"                                  # "ko" turns on the Korean sentence checks
 file = "book"                                # output names: build/<file>.pdf, build/<file>-print.pdf
 title_meta = ["Mooncake Transfer Engine", "기준 커밋 0a09c221"]   # small lines at the bottom of the title page
+# companion = "본편"                         # summary edition only: `본편 7.3절` points at the full book
 
 [source]
 repo = "/data/Mooncake"                      # git repository the book explains (read only)

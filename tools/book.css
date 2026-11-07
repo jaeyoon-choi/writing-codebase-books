@@ -123,6 +123,9 @@ table[data-short] { break-inside: avoid; }
 /* Column widths measured on the whole table (build_pdf.py PAGED_JS), the same on every page. */
 table[data-cols] { table-layout: fixed; }
 table[data-cols] th { box-sizing: border-box; }
+/* Code locations in parentheses (build_pdf.py small_cites): small and grey, so that the sentence reads through them. */
+.cite { font: 0.7em/1 "Noto Sans CJK KR", sans-serif; color: var(--soft); }
+td .cite, section.evidence .cite { font-size: 0.9em; }
 /* A table caption sits above its table and stays on the same page as the first rows. */
 p.tcap { font: 7.8pt/1.4 "Noto Sans CJK KR", sans-serif; color: var(--ink); margin: 3.5mm 0 0; break-after: avoid; }
 p.tcap + table { margin-top: 1.2mm; }

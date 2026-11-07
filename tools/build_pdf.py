@@ -149,6 +149,26 @@ def long_token(tok):
     return tok.replace("\0", "<wbr>")
 
 
+# A code location in running text: `src/x/File.cc:12-20`, `File.cc:12`, and the `, :30` that may follow.
+CITE_TOKEN = re.compile(rf"(?<![\w/.+-])(?:[\w.+-]+/)*[\w+-]+(?:\.[\w+-]+)*\.(?:{EXT}):\d+(?:-\d+)?(?:,\s*:\d+(?:-\d+)?)*")
+PAREN = re.compile(r"\([^()<>]*\)")
+HANGUL = re.compile(r"[가-힣]")
+
+
+def small_cites(body):
+    """Set code locations in parentheses small (span.cite), so that a sentence reads through them: the
+    whole parenthesis when it holds no Hangul, else each location in it. Listings keep theirs."""
+    def paren(m):
+        g = m.group(0)
+        if not CITE_TOKEN.search(g):
+            return g
+        if not HANGUL.search(g):
+            return f'<span class="cite">{g}</span>'
+        return CITE_TOKEN.sub(r'<span class="cite">\g<0></span>', g)
+    return "".join(part if not part or part.startswith("<") else PAREN.sub(paren, part)
+                   for part in re.split(r"(<pre[\s\S]*?</pre>|<[^>]+>)", body))
+
+
 def add_breaks(body):
     """Let long paths and identifiers wrap (<wbr>) and keep flags and dates whole, in text outside <pre> and tags."""
     out = []
@@ -218,7 +238,7 @@ def convert(kind, name, text, puml_names, toc, slug):
                   r'<p class="tcap"><span class="tnum">\1</span>\2</p>\n<table>', body)
     body = re.sub(r"(<h2>[^<]*참고 문헌</h2>)([\s\S]*?)(?=<h[12][\s>]|\Z)", lambda m: m.group(1) + ref_list(m.group(2)), body)
 
-    body = add_breaks(body)
+    body = add_breaks(small_cites(body))
 
     # Headings: give ids, record them for the table of contents.
     def h1(m):
