@@ -132,6 +132,8 @@ def figure(src, caption):
 
 
 LONG_TOKEN = re.compile(r"[\w.:/-]{15,}")
+# A call such as SERDE_SERVICE(StorageSerde, ...) may wrap after its parenthesis (never after Hangul).
+CALL_PAREN = re.compile(r"(?<=[A-Za-z0-9_]{4})\((?=[A-Za-z_])")
 # No break after the dot of a file extension, so that `h` or `cpp` never stands alone on a line.
 EXT = "|".join(bookconf.source().get("extensions", ["h", "cc", "cpp", "py"]) + ["html?"])
 BREAK_AFTER = re.compile(rf"(::|[/_:](?=\w)|\.(?!(?:{EXT})(?![A-Za-z0-9]))(?=\w))")
@@ -139,7 +141,9 @@ BREAK_AFTER = re.compile(rf"(::|[/_:](?=\w)|\.(?!(?:{EXT})(?![A-Za-z0-9]))(?=\w)
 CAMEL = re.compile(r"(?<=[a-z0-9]{2})(?=[A-Z][a-z0-9]{2})|(?<=[A-Z]{2})(?=[A-Z][a-z]{2})")
 # Kept on one line: the -- of a flag with its first word, and a date. (A line range such as
 # 1531-1537 may still break after its hyphen: kept whole, it stretches more justified lines.)
-NOBR = re.compile(r"(?<![\w-])--[A-Za-z][A-Za-z0-9]*|(?<![\d-])\d{4}-\d{2}-\d{2}(?![\d-])")
+NOBR = re.compile(r"(?<![\w-])--[A-Za-z][A-Za-z0-9]*|(?<![\d-])\d{4}-\d{2}-\d{2}(?![\d-])"
+                  # and a number with its unit, so that 15 and 초 or 6.6 and TiB/s stay on one line.
+                  r"|(?<![\w.])\d[\d,.]*(?: ?(?:[KMGT]i?B(?:/s)?|Gbps|ms|ns|us)|초|분|쪽|개|번|대|배|%)(?![A-Za-z])")
 
 
 def long_token(tok):
@@ -176,6 +180,7 @@ def add_breaks(body):
         if not part or part.startswith("<"):
             out.append(part)
             continue
+        part = CALL_PAREN.sub("(<wbr>", part)
         part = LONG_TOKEN.sub(lambda m: long_token(m.group(0)), part)
         out.append(NOBR.sub(r'<span class="nobr">\g<0></span>', part))
     return "".join(out)
@@ -449,6 +454,8 @@ def build_html(jar, print_mode, fixes="", moves=None, cuts=None, breaks=()):
         extra += " evidence" if "evidence" in name else ""
         # Settings appendices (kernel parameters, config keys) use the same small type.
         extra += " dense" if any(k in name for k in ("parameters", "settings", "config")) else ""
+        # A references appendix is a long numbered list of citations: smaller type.
+        extra += " refs" if "references" in name else ""
         extra += " body-start" if kind == "part" and first_part else ""
         first_part = first_part and kind != "part"
         sections.append(f'<section id="{sid}" class="{kind}{extra}">{body}</section>')

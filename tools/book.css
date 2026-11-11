@@ -74,7 +74,7 @@ section.part p { font-size: 9.8pt; }
 .chapter-head { margin: 18mm 0 10mm; border-bottom: 0.4mm solid var(--accent); padding-bottom: 5mm; }
 .ch-num { font: 700 11pt "Noto Sans CJK KR", sans-serif; color: #fff; background: var(--accent);
           display: inline-block; padding: 1.2mm 3.5mm; border-radius: 1mm; letter-spacing: 0.05em; }
-.chapter-head h1 { font-size: 24pt; line-height: 1.28; margin: 4mm 0 0; }
+.chapter-head h1 { font-size: 24pt; line-height: 1.28; margin: 4mm 0 0; text-wrap: balance; word-break: keep-all; }
 h1.plain-h1 { font-size: 20pt; margin: 14mm 0 8mm; color: var(--ink); border-bottom: 0.4mm solid var(--accent); padding-bottom: 4mm; }
 
 /* Section headings. */
@@ -177,6 +177,11 @@ section.dense table { font-size: 7pt; line-height: 1.32; }
 section.dense th { padding: 0.8mm 1.2mm; }
 section.dense td { padding: 0.5mm 1.2mm; overflow-wrap: anywhere; }
 section.dense td code { font-size: 1em; }
+
+/* The references appendix: numbered citations in smaller type. */
+section.refs ol { font-size: 7.8pt; line-height: 1.45; padding-left: 6mm; margin: 1mm 0 3mm; }
+section.refs li { margin: 0.5mm 0; overflow-wrap: anywhere; }
+section.refs h3 { margin-top: 4mm; }
 
 /* The index runs in two columns. */
 section.index ul { columns: 2; column-gap: 8mm; font-size: 8.2pt; line-height: 1.55; list-style: none; padding-left: 0; }
