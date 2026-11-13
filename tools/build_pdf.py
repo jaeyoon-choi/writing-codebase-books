@@ -131,22 +131,56 @@ def figure(src, caption):
     return f'\n<figure class="fig"><img src="{src}" alt="{cap}"{width}><figcaption>{cap}</figcaption></figure>\n'
 
 
-LONG_TOKEN = re.compile(r"[\w.:/-]{15,}")
-# A call such as SERDE_SERVICE(StorageSerde, ...) may wrap after its parenthesis (never after Hangul).
-CALL_PAREN = re.compile(r"(?<=[A-Za-z0-9_]{4})\((?=[A-Za-z_])")
-# No break after the dot of a file extension, so that `h` or `cpp` never stands alone on a line.
+# From ten characters: a name of 10-14 characters (kMaxSliceSize, IBV_WC_SUCCESS) that cannot break
+# moves whole to the next line and leaves wide gaps in the justified line before it.
+LONG_TOKEN = re.compile(r"[\w.:/-]{10,}")
+# A call such as SERDE_SERVICE(StorageSerde, ...) or LOG(FATAL) may wrap after its parenthesis (never after Hangul).
+CALL_PAREN = re.compile(r"(?<=[A-Za-z0-9_]{3})\((?=[A-Za-z_])")
+# No break after the dot of a file extension, so that `h` or `cpp` never stands alone on a line: the
+# listed extensions, and the last dot of a name when one to five letters and digits end it (.jsonl).
+# No break after the :// of a URL either, which would leave `https://` alone at a line end, nor in
+# its host (long_token).
 EXT = "|".join(bookconf.source().get("extensions", ["h", "cc", "cpp", "py"]) + ["html?"])
-BREAK_AFTER = re.compile(rf"(::|[/_:](?=\w)|\.(?!(?:{EXT})(?![A-Za-z0-9]))(?=\w))")
+BREAK_AFTER = re.compile(rf"(::|(?<!:/)/(?=\w)|[_:](?=\w)|\.(?!(?:{EXT})(?![A-Za-z0-9]))"
+                         r"(?![A-Za-z][A-Za-z0-9]{0,4}(?::[\d,-]+)?\.?$)(?=\w))")
 # Between the words of a camelCase name, at least two letters on each side.
 CAMEL = re.compile(r"(?<=[a-z0-9]{2})(?=[A-Z][a-z0-9]{2})|(?<=[A-Z]{2})(?=[A-Z][a-z]{2})")
+# A commit hash or another hex string, which has no other break point: a break every eight digits.
+HEX = re.compile(r"(?=[0-9a-f]*[a-f])(?=[0-9a-f]*\d)[0-9a-f]{12,}")
+UNIT = (r"(?:[KMGTP]i?B(?:/s)?|Gbps|[KMGTP]?FLOPS|[KMG]?Hz|ms|ns|us|µs)(?![A-Za-z])"
+        r"|초|분|시간|쪽|장|절|줄|행|개|번|회|건|명|대|배|단계|조각|%|바이트|비트")
+NUM_UNIT = rf"\d[\d,.]*(?: ?(?:{UNIT})| [가-힣]{{1,3}})"
 # Kept on one line: the -- of a flag with its first word, and a date. (A line range such as
 # 1531-1537 may still break after its hyphen: kept whole, it stretches more justified lines.)
 NOBR = re.compile(r"(?<![\w-])--[A-Za-z][A-Za-z0-9]*|(?<![\d-])\d{4}-\d{2}-\d{2}(?![\d-])"
-                  # and a number with its unit, so that 15 and 초 or 6.6 and TiB/s stay on one line.
-                  r"|(?<![\w.])\d[\d,.]*(?: ?(?:[KMGT]i?B(?:/s)?|Gbps|ms|ns|us)|초|분|쪽|개|번|대|배|%)(?![A-Za-z])")
+                  # A chapter introduction as a place (9장 도입), like a section number.
+                  r"|(?<![\w.])\d+장 도입"
+                  # An expression such as 8 × 312 TFLOPS or 99 × 8 × 8 = 6,336개 (see nobr), a number
+                  # with its unit or with the start of the Hangul word after it (6.6 TiB/s, 15초, 8.1절,
+                  # 512 토큰) and × or = with the number after it.
+                  rf"|(?P<expr>(?<![\w.])\d[\d,.]*(?: [×=] (?:{NUM_UNIT}|\d[\d,.]*))+)"
+                  rf"|(?<![\w.])(?:[×=] )?{NUM_UNIT}|(?<![\w.])[×=] \d[\d,.]*"
+                  # A label with its number and the start of a particle (표 7.2의, 부록 A에), and a short
+                  # hyphenated term (NVMe-oF).
+                  r"|(?<![가-힣])(?:표|그림|부록|리스팅|불변식) (?:[A-Z]|\d+)(?:\.\d+)*(?![A-Za-z0-9]|\.\d)[가-힣]{0,2}"
+                  r"|(?<![\w-])[A-Za-z][A-Za-z0-9]*-[A-Za-z]{1,3}(?![A-Za-z0-9-])")
+
+
+def nobr(m):
+    """A NOBR match on one line; an expression longer than 16 characters breaks only before an operator."""
+    g = m.group(0)
+    if m.group("expr") and len(g) > 16:
+        first, *rest = re.split(r" (?=[×=] )", g)
+        return first + "".join(f' <span class="nobr">{r}</span>' for r in rest)
+    return f'<span class="nobr">{g}</span>'
 
 
 def long_token(tok):
+    if HEX.fullmatch(tok):
+        return "<wbr>".join(tok[k:k + 8] for k in range(0, len(tok), 8))
+    url = re.match(r"https?://[^/]+", tok)
+    if url and len(url.group(0)) < len(tok):   # the scheme and host of a URL stay whole
+        return url.group(0) + long_token(tok[url.end():])
     tok = CAMEL.sub("\0", tok)
     if re.search(r"[/_:.]", tok):
         tok = BREAK_AFTER.sub("\\1\0", tok)
@@ -173,6 +207,9 @@ def small_cites(body):
                    for part in re.split(r"(<pre[\s\S]*?</pre>|<[^>]+>)", body))
 
 
+LAST_WORDS = re.compile("(?:(?<=[\\s>\u2060])([가-힣]{1,6}) )?(?<=[\\s>\u2060])([가-힣]{2,6}[.?!]?[\"”’)]?)(?=</p>)")
+
+
 def add_breaks(body):
     """Let long paths and identifiers wrap (<wbr>) and keep flags and dates whole, in text outside <pre> and tags."""
     out = []
@@ -180,9 +217,15 @@ def add_breaks(body):
         if not part or part.startswith("<"):
             out.append(part)
             continue
+        # A parenthesis right after inline code may start the next line: `kMaxSliceSize`(16,777,200바이트).
+        if part.startswith("(") and out and out[-1] == "</code>":
+            out.append("<wbr>")
+        # A particle stays with the inline code before it (`metadata_version`이다): a word joiner.
+        if HANGUL.match(part) and out and out[-1] == "</code>":
+            out.append("\u2060")
         part = CALL_PAREN.sub("(<wbr>", part)
         part = LONG_TOKEN.sub(lambda m: long_token(m.group(0)), part)
-        out.append(NOBR.sub(r'<span class="nobr">\g<0></span>', part))
+        out.append(NOBR.sub(nobr, part))
     return "".join(out)
 
 
@@ -241,9 +284,16 @@ def convert(kind, name, text, puml_names, toc, slug):
     # Table captions: a `표 N.M 제목` paragraph right above a table (tools/check_book.py checks the numbers).
     body = re.sub(r"<p>(표 (?:\d{1,2}|[A-Z])\.\d{1,3}) (.*?)</p>\s*<table>",
                   r'<p class="tcap"><span class="tnum">\1</span>\2</p>\n<table>', body)
-    body = re.sub(r"(<h2>[^<]*참고 문헌</h2>)([\s\S]*?)(?=<h[12][\s>]|\Z)", lambda m: m.group(1) + ref_list(m.group(2)), body)
+    if "references" in name:   # a references appendix (section.refs) is one reference list
+        body = ref_list(body)
+    else:
+        body = re.sub(r"(<h2>[^<]*참고 문헌</h2>)([\s\S]*?)(?=<h[12][\s>]|\Z)", lambda m: m.group(1) + ref_list(m.group(2)), body)
 
     body = add_breaks(small_cites(body))
+    # The last two words of a paragraph each stay whole, so that the last line never starts inside a
+    # word (는다.).
+    body = LAST_WORDS.sub(lambda m: "".join(f'<span class="nobr">{w}</span>{sp}' for w, sp in
+                                            ((m.group(1), " "), (m.group(2), "")) if w), body)
 
     # Headings: give ids, record them for the table of contents.
     def h1(m):
@@ -270,6 +320,19 @@ def convert(kind, name, text, puml_names, toc, slug):
         return f'<h2 id="{hid}">{m.group(1)}</h2>'
     body = re.sub(r"<h2>(.*?)</h2>", h2, body)
     return body
+
+
+INDEX_GROUP = re.compile(r"<h3>[^<]*</h3>\s*<ul>[\s\S]*?</ul>\s*")
+
+
+def index_columns(body):
+    """Set each run of index groups (a letter heading and its list) as one two-column block, so that
+    the groups follow each other down the columns. A group of at most six entries stays in one column."""
+    def group(m):
+        short = " short" if m.group(0).count("<li") <= 6 else ""
+        return f'<div class="ig{short}">{m.group(0)}</div>'
+    return re.sub(rf"(?:{INDEX_GROUP.pattern})+",
+                  lambda m: f'<div class="index-cols">{INDEX_GROUP.sub(group, m.group(0))}</div>\n', body)
 
 
 def number_blocks(content):
@@ -351,21 +414,30 @@ def move_figures(content, moves):
 
     moves: {figure number: [numbers of the following blocks that fit before the page end]}.
     Only the leading run of blocks that really follow the figure, with nothing between, moves; a
-    listing cut into parts ends the run. The figure records the blocks it went past (data-moved)."""
-    for fig, blocks in moves.items():
+    listing cut into parts ends the run. A figure in the list goes along with the moving one and
+    stays right after it, and may then move on its own past the blocks after it (figures move in
+    reading order). The figure records the blocks and figures it went past (data-moved)."""
+    for fig, blocks in sorted(moves.items(), key=lambda kv: int(kv[0])):
         m = re.search(rf'\n?<figure data-n="{fig}"[\s\S]*?</figure>\n?', content)
         if not m:
             continue
-        end, moved = m.end(), []
+        end, moved, passed, figs = m.end(), [], [], [m.group(0)]
         for n in blocks:
+            f = re.match(rf'\s*<figure data-n="{n}"[\s\S]*?</figure>\n?', content[end:])
+            if f:
+                figs.append(f.group(0))
+                end += f.end()
+                moved.append(n)
+                continue
             b = re.match(rf'\s*(<(p|ul|ol|table|blockquote|h3|h4)|<div class="hl"><pre) data-n="{n}"[\s>][^>]*', content[end:])
             if not b or "cont-next" in b.group(0):
                 break
-            end = block_end(content, end)
+            start, end = end, block_end(content, end)
+            passed.append(content[start:end])
             moved.append(n)
-        if moved:
-            fig_html = m.group(0).replace(f'data-n="{fig}"', f'data-n="{fig}" data-moved="{" ".join(moved)}"', 1)
-            content = content[:m.start()] + content[m.end():end] + fig_html + content[end:]
+        if passed:
+            figs[0] = figs[0].replace(f'data-n="{fig}"', f'data-n="{fig}" data-moved="{" ".join(moved)}"', 1)
+            content = content[:m.start()] + "".join(passed) + "".join(figs) + content[end:]
     return content
 
 
@@ -436,6 +508,8 @@ def build_html(jar, print_mode, fixes="", moves=None, cuts=None, breaks=()):
         if kind == "part":
             part_title = title
         body = convert(kind, name, text, puml_names, toc, slug)
+        if name == "index.md":
+            body = index_columns(body)
         sid, pname = f"s{n:02d}", f"p{n:02d}"
         page_css.append(f"#{sid} {{ page: {pname}; }}")
         if kind == "part":
@@ -452,8 +526,9 @@ def build_html(jar, print_mode, fixes="", moves=None, cuts=None, breaks=()):
         extra = " index" if name == "index.md" else ""
         # The evidence appendix (moved path:line tables) is typeset densely; see book.css.
         extra += " evidence" if "evidence" in name else ""
-        # Settings appendices (kernel parameters, config keys) use the same small type.
-        extra += " dense" if any(k in name for k in ("parameters", "settings", "config")) else ""
+        # Settings appendices (kernel parameters, config keys) use the same small type; a chapter about
+        # configuration does not.
+        extra += " dense" if kind == "app" and any(k in name for k in ("parameters", "settings", "config")) else ""
         # A references appendix is a long numbered list of citations: smaller type.
         extra += " refs" if "references" in name else ""
         extra += " body-start" if kind == "part" and first_part else ""
@@ -650,6 +725,7 @@ def fixes_for(issues):
     is at most 5% too tall or else floats below the blocks that fit there, a listing that did the
     same is cut where the page ends, a table that leaves one body row alone on a page stays whole
     when short or else moves a row, a table wider than the text lets its identifiers break anywhere,
+    a paragraph with a line of stretched word spaces spreads the space between characters instead,
     and a part opener that runs onto a second page loses most of its top space.
 
     Returns (CSS rules as (selector, property, value, check that asked for it), layout changes).
@@ -688,6 +764,8 @@ def fixes_for(issues):
             rules.append((sel, "break-before", "page", "heading"))
         elif i["kind"] == "heading-lead-at-bottom" and not i.get("split"):
             rules.append((sel, "break-before", "page", "lead"))
+        elif i["kind"] == "wide-gaps":
+            rules.append((sel, "text-justify", "inter-character", "spacing"))
         elif i["kind"] == "overflow-x" and i["what"].startswith("table"):
             rules.append((f'table[data-n="{i["n"]}"] code', "overflow-wrap", "anywhere", "overflow"))
         elif i["kind"] == "overflow-y" and i.get("head"):

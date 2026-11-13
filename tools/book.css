@@ -85,7 +85,8 @@ h4 { font: 700 9.6pt/1.4 "Noto Sans CJK KR", sans-serif; margin: 4mm 0 1.5mm; br
 
 /* Lists. */
 ul, ol { margin: 0 0 0.7em; padding-left: 5mm; }
-li { margin: 0.15em 0; }
+/* List items are ragged right, so breaking only between words costs no stretched lines. */
+li { margin: 0.15em 0; word-break: keep-all; overflow-wrap: break-word; }
 
 /* Boxes. */
 blockquote { margin: 4mm 0; padding: 3mm 4mm; background: var(--tint); border-left: 1.2mm solid var(--rule);
@@ -180,10 +181,14 @@ section.dense td code { font-size: 1em; }
 
 /* The references appendix: numbered citations in smaller type. */
 section.refs ol { font-size: 7.8pt; line-height: 1.45; padding-left: 6mm; margin: 1mm 0 3mm; }
-section.refs li { margin: 0.5mm 0; overflow-wrap: anywhere; }
+section.refs li { margin: 0.5mm 0; overflow-wrap: anywhere; word-break: keep-all; }
 section.refs h3 { margin-top: 4mm; }
 
-/* The index runs in two columns. */
-section.index ul { columns: 2; column-gap: 8mm; font-size: 8.2pt; line-height: 1.55; list-style: none; padding-left: 0; }
+/* The index runs in two columns: the letter groups (build_pdf.py index_columns) follow each other
+   down the columns, each under a small heading; a group of at most six entries stays in one column. */
+section.index .index-cols { columns: 2; column-gap: 8mm; }
+section.index ul { font-size: 8.2pt; line-height: 1.55; list-style: none; padding-left: 0; margin: 0 0 1mm; }
 section.index li { break-inside: avoid; padding-left: 3mm; text-indent: -3mm; margin: 0; word-break: keep-all; }
-section.index h3 { column-span: all; }
+section.index .index-cols h3 { font-size: 9pt; margin: 2.2mm 0 0.6mm; }
+section.index .ig:first-child h3 { margin-top: 0; }
+section.index .ig.short { break-inside: avoid; }

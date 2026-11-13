@@ -10,6 +10,25 @@
                                what: `${el.tagName.toLowerCase()}${extra ? ' ' + extra : ''}: ${text}`}, more || {}));
   };
   const pages = [...document.querySelectorAll('.pagedjs_page')];
+  // The width of a space in a block's font, measured outside any justified line.
+  const spaces = new Map();
+  const spaceWidth = (st) => {
+    const key = `${st.fontStyle} ${st.fontWeight} ${st.fontSize} ${st.fontFamily}`;
+    if (!spaces.has(key)) {
+      const sp = document.createElement('span');
+      sp.style.cssText = `position: absolute; visibility: hidden; white-space: pre; font: ${key}`;
+      sp.textContent = 'x x';
+      document.body.appendChild(sp);
+      const x = document.createElement('span');
+      x.style.cssText = sp.style.cssText;
+      x.textContent = 'xx';
+      document.body.appendChild(x);
+      spaces.set(key, sp.getBoundingClientRect().width - x.getBoundingClientRect().width);
+      sp.remove();
+      x.remove();
+    }
+    return spaces.get(key);
+  };
   const BLOCKS = 'p, li, pre, table, figure, blockquote, h1, h2, h3, h4, .chapter-head, .part-head';
   const rect = (el) => el.getBoundingClientRect();
   const margins = (el) => { const s = getComputedStyle(el); return parseFloat(s.marginTop) + parseFloat(s.marginBottom); };
@@ -55,6 +74,12 @@
       room -= h;
       k++;
     }
+    // Not right after a line that the next one continues (a call cut after its comma, a block after
+    // its brace): the cut goes up to three lines earlier, to the end of the statement.
+    const open = (ln) => /(?:[,(\[{\\=?]|&&|\|\||<<|\+)\s*$/.test(ln.textContent);
+    let back = k;
+    while (back > 0 && k - back < 3 && open(lines[back - 1])) back--;
+    if (back > 0 && !open(lines[back - 1])) k = back;
     const n = listingOf(pre), l0 = firstLine(pre);
     if (cont && k === lines.length) return {uncut: n, at: l0};
     if (cont && k >= 1 && lines.length - k >= 2) return {split: n, at: l0 + k, replace: l0};
@@ -78,9 +103,11 @@
   document.querySelectorAll('.pagedjs_page_content figure[data-moved]').forEach((fig) => {
     if (undone.has(fig.dataset.n)) return;
     const moved = fig.dataset.moved.split(' ');
-    const need = rect(fig).height + margins(fig);
+    let need = rect(fig).height + margins(fig);
     for (let j = 0; j < moved.length && at.has(moved[j]); j++) {
       const {el, parts} = seq[at.get(moved[j])];
+      // A figure among the moved blocks travels with this one (check 4): the two need room together.
+      if (el.tagName === 'FIGURE') { need += rect(el).height + margins(el); continue; }
       const q = pageOf(parts[0]);
       if (areaOf(q).bottom - (rect(parts[0]).top - parseFloat(getComputedStyle(el).marginTop)) >= need) {
         undone.add(fig.dataset.n);
@@ -269,10 +296,16 @@
             // the next page top; an h2, another figure or a listing cut into parts stops the run,
             // and a heading or a table caption never ends it (the figure would land between the
             // caption and its table). A block split over two pages counts with all its parts.
-            const run = [], hs = [];
+            // Figures that directly follow this one go with it (carry), in their order.
+            const moved = first.dataset.moved ? first.dataset.moved.split(' ') : [];
+            const run = [], hs = [], carry = [];
             let used = 0;
             for (let k = at.get(first.dataset.n) + 1; k < seq.length; k++) {
               const {n: m, el, parts} = seq[k];
+              if (el.tagName === 'FIGURE' && !run.length && !el.dataset.moved && sectionOf(el) === sectionOf(first)) {
+                if (!moved.includes(m)) carry.push(m);
+                continue;
+              }
               if (/^(H[12]|FIGURE)$/.test(el.tagName) || !/^\d+$/.test(m) || /cont-(next|prev)/.test(el.className) ||
                   sectionOf(el) !== sectionOf(first)) break;
               const h = parts.reduce((s, p) => s + rect(p).height, 0) + margins(el);
@@ -288,12 +321,11 @@
             }
             // Worth the change of reading order only when the page ends up 75% full or the moved
             // blocks (with those moved in earlier passes) fill at least a third of the space.
-            const moved = first.dataset.moved ? first.dataset.moved.split(' ') : [];
             const before = moved.reduce((s, m) => s + (at.has(m) ? seq[at.get(m)].parts.filter((p) => pageOf(p) === i)
               .reduce((t, p) => t + rect(p).height, 0) : 0), 0);
             const useful = (bottom + used - a.top) / a.height >= 0.75 || before + used >= (a.bottom - bottom - used) / 2;
             item.fig = first.dataset.n;
-            if (useful && run.length) item.paras = moved.concat(run);
+            if (useful && run.length) item.paras = moved.concat(carry, run);
             else if (!useful && moved.length) Object.assign(item, {keep: [], veto: true});
           }
         }
@@ -355,6 +387,31 @@
         issues.push(item);
       }
     }
+
+    // 7. A justified line whose word spaces stretch to more than 2.4 times their natural width: inline
+    // code or a long name that did not fit moved to the next line and left few spaces to fill the
+    // rest. The fix spreads the extra width of the paragraph's lines over every character boundary
+    // (text-justify: inter-character), which changes no line break.
+    area.querySelectorAll('p[data-n]').forEach((p) => {
+      const st = getComputedStyle(p);
+      if (st.textAlign !== 'justify' || st.textJustify === 'inter-character') return;
+      const natural = spaceWidth(st);
+      let widest = 0;
+      const w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+      for (let t = w.nextNode(); t; t = w.nextNode()) {
+        if (t.parentElement.closest('.nobr')) continue;
+        for (let k = t.data.indexOf(' '); k !== -1; k = t.data.indexOf(' ', k + 1)) {
+          const rg = document.createRange();
+          rg.setStart(t, k);
+          rg.setEnd(t, k + 1);
+          const r = rg.getClientRects()[0];
+          if (r && r.left >= a.left && r.right <= a.right + 1) widest = Math.max(widest, r.width);
+        }
+      }
+      if (widest > 2.4 * natural) {
+        add(n, 'wide-gaps', p, `(space ${(widest / natural).toFixed(1)} times its width)`);
+      }
+    });
   });
   seen.forEach((s) => { if (!s.visible) add(s.page, 'lost', s.el); });
   // A part opener is one page: report one whose text runs onto the next page.
