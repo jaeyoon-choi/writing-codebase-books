@@ -40,7 +40,7 @@
 ## 3. 기준 자료
 
 - `work/scenario.py`: 예제 시나리오(노드, 디스크, 데이터, 요청, 사건 2~3개)의 숫자와 ID를 코드의 규칙으로 계산하는 스크립트. 결과를 `work/scenario.md`에 표로 적는다.
-- `work/terms.md`: 고정 용어 표(용어, 영어 또는 식별자, 뜻, 정의한 장).
+- `work/terms.md`: 고정 용어 표(용어, 영어 또는 식별자, 뜻, 정의한 장). 코드, 지표, 환경 변수에 영어로 쓰인 용어(eviction, watermark, lease, copy-on-write)는 우리말 한자어로 옮기지 않고 영어 그대로 표제어로 삼는다. 동사로 쓸 때는 `evict한다`, `evict된다`처럼 쓰고, 처음 나오는 자리에서 한 문장으로 뜻을 풀어 쓴다. Mooncake 책은 eviction을 "축출"로 정해 두고 원고를 다 쓴 뒤, 저자의 요청으로 전권을 eviction으로 바꿨다.
 - `work/outline.md`: 확정 절 번호와 장별 목표 쪽수.
 - `book.toml`의 `[layout] order`: 읽는 순서(front, part, ch, app). 아직 쓰지 않은 파일은 화면용 빌드와 `measure_puml.py`가 경고하고 건너뛰고, 인쇄용 빌드(`--print`)는 멈춘다.
 - 템플릿 견본 한 쪽: `work/template-sample.md`에 장의 일부를 옮기고 `python3 -I tools/build_sample.py`로 `build/template-sample.pdf`를 만들어 사용자에게 판형을 보인다.
