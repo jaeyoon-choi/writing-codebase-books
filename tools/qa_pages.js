@@ -74,12 +74,15 @@
       room -= h;
       k++;
     }
+    // At least two lines go to the next part.
+    if (k < lines.length && lines.length - k < 2) k = Math.max(0, lines.length - 2);
     // Not right after a line that the next one continues (a call cut after its comma, a block after
-    // its brace): the cut goes up to three lines earlier, to the end of the statement.
+    // its brace): the cut goes up to three lines earlier, to the end of the statement, and a
+    // continuation part whose first lines all continue keeps them (k = 0).
     const open = (ln) => /(?:[,(\[{\\=?]|&&|\|\||<<|\+)\s*$/.test(ln.textContent);
     let back = k;
     while (back > 0 && k - back < 3 && open(lines[back - 1])) back--;
-    if (back > 0 && !open(lines[back - 1])) k = back;
+    if (back === 0 || !open(lines[back - 1])) k = back;
     const n = listingOf(pre), l0 = firstLine(pre);
     if (cont && k === lines.length) return {uncut: n, at: l0};
     if (cont && k >= 1 && lines.length - k >= 2) return {split: n, at: l0 + k, replace: l0};
@@ -315,7 +318,14 @@
               hs.push(h);
             }
             const lastEl = () => seq[at.get(run[run.length - 1])].el;
-            while (run.length && (/^H[34]$/.test(lastEl().tagName) || lastEl().classList.contains('tcap'))) {
+            // A paragraph right before a figure, table or listing introduces it ("다음과 같다."): the
+            // moved figure never lands between the two.
+            const introduces = () => {
+              let k = at.get(run[run.length - 1]) + 1;
+              if (k < seq.length && seq[k].el.classList.contains('tcap')) k++;   // a table caption between
+              return lastEl().tagName === 'P' && k < seq.length && /^(FIGURE|TABLE|PRE)$/.test(seq[k].el.tagName);
+            };
+            while (run.length && (/^H[34]$/.test(lastEl().tagName) || lastEl().classList.contains('tcap') || introduces())) {
               run.pop();
               used -= hs.pop();
             }
@@ -340,6 +350,18 @@
       }
     }
 
+    // 4b. A listing cut on this page whose continuation opens the next page, while this page still
+    // has room for more of its lines: the cut was made in an earlier pass, before the text above it
+    // moved up (check 4 looks only at pages under 75% full).
+    if (blocks.length && i + 1 < pages.length && onPage[i].length && onPage[i + 1].length) {
+      const last = onPage[i][onPage[i].length - 1].el, cont = onPage[i + 1][0].el;
+      if (last.tagName === 'PRE' && last.classList.contains('cont-next') && cont.tagName === 'PRE' &&
+          cont.classList.contains('cont-prev') && listingOf(cont) === listingOf(last)) {
+        const cut = cutFor(cont, a.bottom - rect(last).bottom - 16);
+        if (cut && cut.split) issues.push({page: n, kind: 'cut-early', what: `pre ${cont.dataset.n}`, ...cut});
+      }
+    }
+
     // 5. A table split so that one of its parts holds at most one body row (each part repeats the
     // head row, so longer parts read well). The fix keeps a short table whole; a longer one sends
     // its first part with its caption and heading to the next page, or one more row to the last.
@@ -351,12 +373,13 @@
       const item = {page: n, kind: 'table-split', n: t.dataset.n, total,
                     what: `table: ${rows.length} of ${total} rows on this page`};
       if (!t.dataset.splitFrom) {
-        // Its caption, headings and a short lead paragraph right after a heading go with it.
+        // Its caption, headings and a short lead paragraph go with it: one right after a heading, or
+        // one right before the table, which introduces it when the table has no caption.
         let lead = t;
         for (let p = t.previousElementSibling; p; p = p.previousElementSibling) {
           const head = /^H[234]$/.test(p.tagName) || p.classList.contains('tcap');
           const intro = p.tagName === 'P' && !p.className && !p.dataset.splitFrom && rect(p).height < 2.5 * lineH(p) &&
-            p.previousElementSibling && /^H[234]$/.test(p.previousElementSibling.tagName);
+            (p === t.previousElementSibling || (p.previousElementSibling && /^H[234]$/.test(p.previousElementSibling.tagName)));
           if (!head && !intro) break;
           lead = p;
         }

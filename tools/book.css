@@ -141,7 +141,7 @@ td { padding: 1.2mm 2mm; border-bottom: 0.2mm solid #DDE3E8; vertical-align: top
 /* A short first column (row labels) keeps its words whole. */
 td:first-child { min-width: 12mm; }
 /* break-word, not anywhere: the column stays as wide as the longest identifier segment. */
-td code, th code { font-size: 0.92em; overflow-wrap: break-word; }
+td code, th code { font-size: 0.92em; overflow-wrap: break-word; word-break: keep-all; }
 
 /* Figures. */
 figure.fig { margin: 3mm 0; text-align: center; break-inside: avoid; }
@@ -176,7 +176,8 @@ section.evidence p.tcap { margin: 2.5mm 0 0; }
 /* Settings appendices: tables of five or six columns of paths and option names. */
 section.dense table { font-size: 7pt; line-height: 1.32; }
 section.dense th { padding: 0.8mm 1.2mm; }
-section.dense td { padding: 0.5mm 1.2mm; overflow-wrap: anywhere; }
+/* break-word, not anywhere: anywhere lets a column shrink below one Korean word (카운/터). */
+section.dense td { padding: 0.5mm 1.2mm; overflow-wrap: break-word; }
 section.dense td code { font-size: 1em; }
 
 /* The references appendix: numbered citations in smaller type. */
@@ -192,3 +193,5 @@ section.index li { break-inside: avoid; padding-left: 3mm; text-indent: -3mm; ma
 section.index .index-cols h3 { font-size: 9pt; margin: 2.2mm 0 0.6mm; }
 section.index .ig:first-child h3 { margin-top: 0; }
 section.index .ig.short { break-inside: avoid; }
+/* A letter heading keeps at least two entries below it at a column end. */
+section.index .ig h3, section.index .ig li:first-of-type { break-after: avoid; }

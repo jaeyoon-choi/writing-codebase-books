@@ -141,14 +141,15 @@ CALL_PAREN = re.compile(r"(?<=[A-Za-z0-9_]{3})\((?=[A-Za-z_])")
 # No break after the :// of a URL either, which would leave `https://` alone at a line end, nor in
 # its host (long_token).
 EXT = "|".join(bookconf.source().get("extensions", ["h", "cc", "cpp", "py"]) + ["html?"])
-BREAK_AFTER = re.compile(rf"(::|(?<!:/)/(?=\w)|[_:](?=\w)|\.(?!(?:{EXT})(?![A-Za-z0-9]))"
+# No break after the colon before a line number (`file.cpp:` / `120-130`).
+BREAK_AFTER = re.compile(rf"(::|(?<!:/)/(?=\w)|_(?=\w)|:(?=[A-Za-z_])|\.(?!(?:{EXT})(?![A-Za-z0-9]))"
                          r"(?![A-Za-z][A-Za-z0-9]{0,4}(?::[\d,-]+)?\.?$)(?=\w))")
 # Between the words of a camelCase name, at least two letters on each side.
 CAMEL = re.compile(r"(?<=[a-z0-9]{2})(?=[A-Z][a-z0-9]{2})|(?<=[A-Z]{2})(?=[A-Z][a-z]{2})")
 # A commit hash or another hex string, which has no other break point: a break every eight digits.
 HEX = re.compile(r"(?=[0-9a-f]*[a-f])(?=[0-9a-f]*\d)[0-9a-f]{12,}")
 UNIT = (r"(?:[KMGTP]i?B(?:/s)?|Gbps|[KMGTP]?FLOPS|[KMG]?Hz|ms|ns|us|µs)(?![A-Za-z])"
-        r"|초|분|시간|쪽|장|절|줄|행|개|번|회|건|명|대|배|단계|조각|%|바이트|비트")
+        r"|밀리초|마이크로초|나노초|초|분|시간|쪽|장|절|줄|행|개|번|회|건|명|대|배|단계|조각|%|바이트|비트")
 NUM_UNIT = rf"\d[\d,.]*(?: ?(?:{UNIT})| [가-힣]{{1,3}})"
 # Kept on one line: the -- of a flag with its first word, and a date. (A line range such as
 # 1531-1537 may still break after its hyphen: kept whole, it stretches more justified lines.)
@@ -163,7 +164,9 @@ NOBR = re.compile(r"(?<![\w-])--[A-Za-z][A-Za-z0-9]*|(?<![\d-])\d{4}-\d{2}-\d{2}
                   # A label with its number and the start of a particle (표 7.2의, 부록 A에), and a short
                   # hyphenated term (NVMe-oF).
                   r"|(?<![가-힣])(?:표|그림|부록|리스팅|불변식) (?:[A-Z]|\d+)(?:\.\d+)*(?![A-Za-z0-9]|\.\d)[가-힣]{0,2}"
-                  r"|(?<![\w-])[A-Za-z][A-Za-z0-9]*-[A-Za-z]{1,3}(?![A-Za-z0-9-])")
+                  r"|(?<![\w-])[A-Za-z][A-Za-z0-9]*-[A-Za-z]{1,3}(?![A-Za-z0-9-])"
+                  # A line range (5372-5374), which Chrome would otherwise break after the hyphen.
+                  r"|(?<![\w.-])\d+-\d+(?![\w-])")
 
 
 def nobr(m):
@@ -178,12 +181,16 @@ def nobr(m):
 def long_token(tok):
     if HEX.fullmatch(tok):
         return "<wbr>".join(tok[k:k + 8] for k in range(0, len(tok), 8))
-    url = re.match(r"https?://[^/]+", tok)
-    if url and len(url.group(0)) < len(tok):   # the scheme and host of a URL stay whole
-        return url.group(0) + long_token(tok[url.end():])
+    url = re.match(r"[a-z][a-z0-9+.-]*://[^/]+", tok)
+    if url:   # the scheme and host of a URL (tcp://0.0.0.0:5557 too) stay whole
+        return tok if url.end() == len(tok) else url.group(0) + long_token(tok[url.end():])
+    if re.fullmatch(r"\d+(?:\.\d+){3}(?::\d+)?", tok):   # an IPv4 address and its port stay whole
+        return tok
     tok = CAMEL.sub("\0", tok)
     if re.search(r"[/_:.]", tok):
-        tok = BREAK_AFTER.sub("\\1\0", tok)
+        # Never after a leading /, : or _ (`/mnt/3fs`, `:11967-11972`, `_failed_items_total`), which would
+        # stand alone at a line end.
+        tok = tok[0] + BREAK_AFTER.sub("\\1\0", tok[1:]) if tok[0] in "/:_" else BREAK_AFTER.sub("\\1\0", tok)
     return tok.replace("\0", "<wbr>")
 
 
@@ -203,11 +210,38 @@ def small_cites(body):
         if not HANGUL.search(g):
             return f'<span class="cite">{g}</span>'
         return CITE_TOKEN.sub(r'<span class="cite">\g<0></span>', g)
-    return "".join(part if not part or part.startswith("<") else PAREN.sub(paren, part)
-                   for part in re.split(r"(<pre[\s\S]*?</pre>|<[^>]+>)", body))
+    out, incode = [], False
+    for part in re.split(r"(<pre[\s\S]*?</pre>|<[^>]+>)", body):
+        if part.startswith("<"):
+            incode = re.match(r"<code[\s>]", part) is not None or (incode and part != "</code>")
+        out.append(part if not part or part.startswith("<") or incode else PAREN.sub(paren, part))
+    return "".join(out)
 
+
+# A space between two inline elements (`a` `b`, two .nobr words). Paged.js skips a text node that
+# holds only white space when it rebuilds a block that continues from the page before, so such a
+# space goes into a span of its own.
+INLINE = r"(?:span|code|strong|em|a|b|i|sup|sub)"
+INLINE_GAP = re.compile(rf"(</{INLINE}>)([ \t]+)(?=<(?:{INLINE}[\s>]|wbr>))")
 
 LAST_WORDS = re.compile("(?:(?<=[\\s>\u2060])([가-힣]{1,6}) )?(?<=[\\s>\u2060])([가-힣]{2,6}[.?!]?[\"”’)]?)(?=</p>)")
+
+
+NUM_HANGUL = re.compile(r"(?<![\w.])\d[\d,.]*[가-힣]{1,4}")
+
+
+def pieces(text):
+    """The tags and text runs of `text`, each with its offset."""
+    k = 0
+    for s in re.split(r"(<[^>]+>)", text):
+        yield k, s
+        k += len(s)
+
+
+def depth(text, k):
+    """Whether offset k of `text` lies inside a <span> opened in `text` itself (a .nobr from NOBR)."""
+    head = text[:k]
+    return head.count("<span") > head.count("</span>")
 
 
 def add_breaks(body):
@@ -223,9 +257,20 @@ def add_breaks(body):
         # A particle stays with the inline code before it (`metadata_version`이다): a word joiner.
         if HANGUL.match(part) and out and out[-1] == "</code>":
             out.append("\u2060")
-        part = CALL_PAREN.sub("(<wbr>", part)
+        # A particle stays with the closing parenthesis before it: (샤드가 다른 멤버 포함)와.
+        part = re.sub(r"\)(?=[가-힣])", ")\u2060", part)
+        if len(part) > 16:   # a short call such as LOG(FATAL) stays whole
+            part = CALL_PAREN.sub("(<wbr>", part)
+        part = re.sub(r"(?<=\w)@(?=\w)", "<wbr>@", part)   # a NIC path breaks before its @: 10.0.0.2:12345@mlx5_1
         part = LONG_TOKEN.sub(lambda m: long_token(m.group(0)), part)
-        out.append(NOBR.sub(nobr, part))
+        part = NOBR.sub(nobr, part)
+        # A number keeps the Hangul right after it (31밀리초, 2.1의), and a .nobr span the particle
+        # right after it (6.2절의). Spans, not U+2060, so that a search for "6.2절" still finds it.
+        part = "".join(s if s.startswith("<") or depth(part, k) else NUM_HANGUL.sub(r'<span class="nobr">\g<0></span>', s)
+                       for k, s in pieces(part))
+        part = re.sub(r'(<span class="nobr">[^<]*)</span>([가-힣]{1,2})(?![가-힣])', r"\1\2</span>", part)
+        part = re.sub(r"&lt;[^&<>]{1,24}&gt;", lambda m: f'<span class="nobr">{m.group(0)}</span>', part)
+        out.append(part)
     return "".join(out)
 
 
@@ -238,6 +283,26 @@ def ref_list(block):
     block = re.sub(r"<p>(?=\[\d+\])", '<p class="ref">', block)
     return "".join(part if part.startswith("<") else URL.sub(r"<code>\g<0></code>", part)
                    for part in re.split(r"(<code>[\s\S]*?</code>|<[^>]+>)", block))
+
+
+def dense(kind, name):
+    """A settings appendix: tables of five or six columns, typeset small (book.css section.dense)."""
+    return kind == "app" and any(k in name for k in ("parameters", "settings", "config"))
+
+
+SHORT_CODE, SHORT_CODE_DENSE = 24, 20
+
+
+def short_cell_code(body, limit=SHORT_CODE):
+    """Inline code of at most `limit` characters in a table cell never breaks (no <wbr>, and not after a
+    hyphen either): Chrome sizes a column by its narrowest break, so `ibv_<wbr>reg_<wbr>mr` or
+    `mooncake-store/` would make a narrow first column."""
+    def code(m):
+        if len(html.unescape(re.sub(r"<[^>]+>", "", m.group(1)))) > limit:
+            return m.group(0)
+        return f'<code class="nobr">{m.group(1).replace("<wbr>", "")}</code>'
+    return re.sub(r"<t([dh])\b([^>]*)>([\s\S]*?)</t\1>",
+                  lambda c: re.sub(r"<code>([\s\S]*?)</code>", code, c.group(0)), body)
 
 
 def convert(kind, name, text, puml_names, toc, slug):
@@ -290,10 +355,12 @@ def convert(kind, name, text, puml_names, toc, slug):
         body = re.sub(r"(<h2>[^<]*참고 문헌</h2>)([\s\S]*?)(?=<h[12][\s>]|\Z)", lambda m: m.group(1) + ref_list(m.group(2)), body)
 
     body = add_breaks(small_cites(body))
+    body = short_cell_code(body, SHORT_CODE_DENSE if dense(kind, name) else SHORT_CODE)
     # The last two words of a paragraph each stay whole, so that the last line never starts inside a
     # word (는다.).
     body = LAST_WORDS.sub(lambda m: "".join(f'<span class="nobr">{w}</span>{sp}' for w, sp in
                                             ((m.group(1), " "), (m.group(2), "")) if w), body)
+    body = INLINE_GAP.sub(r"\1<span>\2</span>", body)
 
     # Headings: give ids, record them for the table of contents.
     def h1(m):
@@ -528,7 +595,7 @@ def build_html(jar, print_mode, fixes="", moves=None, cuts=None, breaks=()):
         extra += " evidence" if "evidence" in name else ""
         # Settings appendices (kernel parameters, config keys) use the same small type; a chapter about
         # configuration does not.
-        extra += " dense" if kind == "app" and any(k in name for k in ("parameters", "settings", "config")) else ""
+        extra += " dense" if dense(kind, name) else ""
         # A references appendix is a long numbered list of citations: smaller type.
         extra += " refs" if "references" in name else ""
         extra += " body-start" if kind == "part" and first_part else ""
@@ -712,7 +779,7 @@ def layout(html_path, pdf_path, report_path):
 
 # Five passes left listing cuts mid-page and one-row table parts in the 490-page Mooncake book;
 # eight let them settle.
-PASSES = 8
+PASSES = 12
 SHORT_TABLE = 6  # body rows: a table this short that would leave one row alone on a page is kept whole
 
 
@@ -752,6 +819,8 @@ def fixes_for(issues):
         if i["kind"] == "table-split":
             if i["total"] <= SHORT_TABLE:
                 rules.append((f'table[data-n="{i["n"]}"]', "break-inside", "avoid", "table"))
+                if i.get("lead") and i["lead"] != i["n"]:   # its lead goes to the next page with it
+                    rules.append((f'[data-n="{i["lead"]}"]', "break-before", "page", "table"))
             elif i.get("row"):
                 rules.append((f'table[data-n="{i["n"]}"] tr[data-r="{i["row"]}"]', "break-before", "page", "row"))
             else:
