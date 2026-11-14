@@ -60,6 +60,8 @@
   // `room` px at the end of this page. A part that continues the listing from this page gives its
   // lines to the part before (the cut moves, or goes when all lines fit); any other part is cut
   // into a new part with its own box, when at least three lines go and two stay.
+  // A listing line that the next one continues (a call cut after its comma, a block after its brace).
+  const openLine = (ln) => /(?:[,(\[{\\=?]|&&|\|\||<<|\+)\s*$/.test(ln.textContent);
   const cutFor = (pre, room) => {
     const cont = pre.classList.contains('cont-prev');
     if (!cont) {
@@ -74,15 +76,17 @@
       room -= h;
       k++;
     }
-    // At least two lines go to the next part.
-    if (k < lines.length && lines.length - k < 2) k = Math.max(0, lines.length - 2);
+    // At least two lines go to the next part, not counting lines of only closing brackets.
+    const real = (from) => lines.slice(from).filter((ln) => !/^\s*[}\]);,]*\s*$/.test(ln.textContent)).length;
+    while (k > 0 && k < lines.length && real(k) < 2) k--;
     // Not right after a line that the next one continues (a call cut after its comma, a block after
     // its brace): the cut goes up to three lines earlier, to the end of the statement, and a
     // continuation part whose first lines all continue keeps them (k = 0).
-    const open = (ln) => /(?:[,(\[{\\=?]|&&|\|\||<<|\+)\s*$/.test(ln.textContent);
+    const open = openLine;
     let back = k;
     while (back > 0 && k - back < 3 && open(lines[back - 1])) back--;
     if (back === 0 || !open(lines[back - 1])) k = back;
+    while (k > 0 && !lines[k - 1].textContent.trim()) k--;   // the first part does not end on a blank line
     const n = listingOf(pre), l0 = firstLine(pre);
     if (cont && k === lines.length) return {uncut: n, at: l0};
     if (cont && k >= 1 && lines.length - k >= 2) return {split: n, at: l0 + k, replace: l0};
@@ -138,9 +142,14 @@
         continue;
       }
       if (el.tagName === 'PRE') {
+        // The listing's first part: three lines, or more when cutFor would not cut after a line that
+        // the next one continues; all of it when no cut leaves two lines for the next part.
         const lines = [...el.querySelectorAll('.ln')];
         const body = lines.reduce((s, ln) => s + rect(ln).height, 0);
-        return need + (lines.length >= 5 ? h - body + 3 * rect(lines[0]).height : h) + m;
+        let k = 3;
+        while (k <= lines.length - 2 && openLine(lines[k - 1])) k++;
+        const head = k <= lines.length - 2 ? lines.slice(0, k).reduce((s, ln) => s + rect(ln).height, 0) : body;
+        return need + (lines.length >= 5 ? h - body + head : h) + m;
       }
       if (el.tagName === 'TABLE' && getComputedStyle(el).breakInside !== 'avoid') {
         const rows = [...el.querySelectorAll(':scope > tbody > tr')].slice(0, 2);
@@ -168,12 +177,18 @@
       if (rest.length >= 3) need = rect(el).height;
       else if (!t.dataset.splitTo) need = rest.reduce((s, r) => s + rect(r).height, 0);
     } else if (at.has(el.dataset.n)) {
-      need = groupNeed(at.get(el.dataset.n));
+      const k = at.get(el.dataset.n);
+      // An introducing paragraph (check 6b) needs room for itself and the start of what it introduces,
+      // all of a listing, which check 6b does not cut.
+      const nxt = why === 'intro' && k + 1 < seq.length ? seq[k + 1] : null;
+      need = groupNeed(k) + (!nxt ? 0 : nxt.el.tagName === 'PRE'
+        ? nxt.parts.reduce((s, q) => s + rect(q).height, 0) + margins(nxt.el) : groupNeed(k + 1));
     }
     const fill = (bottom - a.top) / a.height;
-    if (need <= a.bottom - bottom - 16 || (why === 'lead' && fill < 0.6)) {
+    const thin = (why === 'lead' || why === 'intro') && fill < 0.6;
+    if (need <= a.bottom - bottom - 16 || thin) {
       issues.push({page: i + 1, kind: 'break-unneeded', what: `${sel} (${why}): page ${i} is ${(fill * 100).toFixed(0)}% full`,
-                   drop: sel, veto: why === 'lead'});
+                   drop: sel, veto: thin});
     }
   });
 
@@ -301,6 +316,13 @@
             // caption and its table). A block split over two pages counts with all its parts.
             // Figures that directly follow this one go with it (carry), in their order.
             const moved = first.dataset.moved ? first.dataset.moved.split(' ') : [];
+            // The paragraph that names this figure right before it in the manuscript stays next to it:
+            // no move while this page is 60% full (check 6b then takes the two to the next page).
+            const k0 = moved.length && at.has(moved[0]) ? at.get(moved[0]) - 1 : at.get(first.dataset.n) - 1;
+            const lead = k0 >= 0 ? seq[k0].el : null;
+            const num = ((first.querySelector('figcaption') || first).textContent.match(/그림 [A-Z0-9]+\.\d+/) || [])[0];
+            const ownIntro = lead && lead.tagName === 'P' && !lead.className && num && lead.textContent.includes(num) &&
+              rect(lead).height < 2.5 * lineH(lead);
             const run = [], hs = [], carry = [];
             let used = 0;
             for (let k = at.get(first.dataset.n) + 1; k < seq.length; k++) {
@@ -323,7 +345,7 @@
             const introduces = () => {
               let k = at.get(run[run.length - 1]) + 1;
               if (k < seq.length && seq[k].el.classList.contains('tcap')) k++;   // a table caption between
-              return lastEl().tagName === 'P' && k < seq.length && /^(FIGURE|TABLE|PRE)$/.test(seq[k].el.tagName);
+              return lastEl().tagName === 'P' && !lastEl().className && k < seq.length && /^(FIGURE|TABLE|PRE)$/.test(seq[k].el.tagName);
             };
             while (run.length && (/^H[34]$/.test(lastEl().tagName) || lastEl().classList.contains('tcap') || introduces())) {
               run.pop();
@@ -333,9 +355,13 @@
             // blocks (with those moved in earlier passes) fill at least a third of the space.
             const before = moved.reduce((s, m) => s + (at.has(m) ? seq[at.get(m)].parts.filter((p) => pageOf(p) === i)
               .reduce((t, p) => t + rect(p).height, 0) : 0), 0);
-            const useful = (bottom + used - a.top) / a.height >= 0.75 || before + used >= (a.bottom - bottom - used) / 2;
+            const after = (bottom + used - a.top) / a.height;
+            // ... and in any case only when that page ends at least 60% full.
+            const useful = (after >= 0.75 || before + used >= (a.bottom - bottom - used) / 2) && after >= 0.6;
             item.fig = first.dataset.n;
-            if (useful && run.length) item.paras = moved.concat(carry, run);
+            if (ownIntro && fill >= 0.6) {
+              if (moved.length) Object.assign(item, {keep: [], veto: true});
+            } else if (useful && run.length) item.paras = moved.concat(carry, run);
             else if (!useful && moved.length) Object.assign(item, {keep: [], veto: true});
           }
         }
@@ -379,7 +405,8 @@
         for (let p = t.previousElementSibling; p; p = p.previousElementSibling) {
           const head = /^H[234]$/.test(p.tagName) || p.classList.contains('tcap');
           const intro = p.tagName === 'P' && !p.className && !p.dataset.splitFrom && rect(p).height < 2.5 * lineH(p) &&
-            (p === t.previousElementSibling || (p.previousElementSibling && /^H[234]$/.test(p.previousElementSibling.tagName)));
+            (p === t.previousElementSibling || (p.nextElementSibling && p.nextElementSibling.classList.contains('tcap')) ||
+             (p.previousElementSibling && /^H[234]$/.test(p.previousElementSibling.tagName)));
           if (!head && !intro) break;
           lead = p;
         }
@@ -389,6 +416,41 @@
       }
       issues.push(item);
     });
+
+    // Whether a paragraph reads as the introduction of the block after it: before a figure it names
+    // the figure or ends with "다음과 같다", before a listing it does not explain the listing above it
+    // by its line numbers ("253번째 줄"). Tables have no caption, so the sentence before one leads it.
+    const introText = (p, nx) => {
+      const t = p.textContent.trim();
+      if (nx.tagName === 'FIGURE') {
+        const num = ((nx.querySelector('figcaption') || nx).textContent.match(/그림 [A-Z0-9]+\.\d+/) || [])[0];
+        return (num && t.includes(num)) || /(?:다음|아래)과 같다\.?$/.test(t);
+      }
+      if (nx.tagName === 'PRE') return !/\d+번째 줄/.test(t);
+      return true;
+    };
+
+    // 6b. A short paragraph that introduces a table, figure or listing ("다음과 같다.") closing the page
+    // while what it introduces opens the next page: the paragraph goes to the next page too, when this
+    // page stays 60% full and the paragraph and a figure fit on one page. Pages are separate DOM
+    // trees, so the neighbor comes from the reading order (seq), not from nextElementSibling.
+    if (i + 1 < pages.length && onPage[i].length >= 2 && onPage[i + 1].length) {
+      const p = onPage[i][onPage[i].length - 1].el, nx = onPage[i + 1][0].el;
+      const k = at.has(p.dataset.n) ? at.get(p.dataset.n) + 1 : -1;
+      if (p.tagName === 'P' && !p.className && !p.dataset.splitTo && !p.dataset.splitFrom &&
+          rect(p).height < lineH(p) * (nx.tagName === 'TABLE' || nx.classList.contains('tcap') ? 3.5 : 2.5) && k > 0 && k < seq.length && seq[k].n === nx.dataset.n &&
+          (/^(TABLE|FIGURE|PRE)$/.test(nx.tagName) || nx.classList.contains('tcap')) && !nx.dataset.splitFrom &&
+          !nx.classList.contains('cont-prev') && sectionOf(nx) === sectionOf(p) && introText(p, nx)) {
+        // A paragraph right after a heading is the heading's lead, which check 6 moves with it.
+        const before = onPage[i][onPage[i].length - 2].el;
+        const prevBottom = rect(before).bottom;
+        const group = rect(p).height + margins(p) + (nx.tagName === 'FIGURE' ? rect(nx).height + margins(nx) : 0);
+        if (!/^H[234]$/.test(before.tagName) && (prevBottom - a.top) / a.height >= 0.6 && group <= a.height) {
+          issues.push({page: n, kind: 'intro-at-bottom', n: p.dataset.n,
+                       what: `p: ${p.textContent.trim().slice(0, 40)} (next page opens with ${nx.tagName.toLowerCase()})`});
+        }
+      }
+    }
 
     // 6. A heading and a lead paragraph of at most two lines closing the page while what they
     // introduce (a listing, figure or table) opens the next page. A listing is cut so that its
@@ -400,11 +462,11 @@
       if (/^H[234]$/.test(h.tagName) && p.tagName === 'P' && !p.className && !p.dataset.splitTo &&
           !p.dataset.splitFrom && rect(p).height < lineH(p) * 2.5 && sectionOf(nx) === sectionOf(p) &&
           !nx.dataset.splitFrom && !nx.classList.contains('cont-prev') &&
-          (/^(PRE|FIGURE|TABLE)$/.test(nx.tagName) || nx.classList.contains('tcap'))) {
+          (/^(PRE|FIGURE|TABLE|BLOCKQUOTE|UL|OL)$/.test(nx.tagName) || nx.classList.contains('tcap'))) {
         const item = {page: n, kind: 'heading-lead-at-bottom', n: h.dataset.n,
                       what: `${h.tagName.toLowerCase()}: ${h.textContent.trim().slice(0, 50)} (next page opens with ${nx.tagName.toLowerCase()})`};
         const start = rect(h).top - parseFloat(getComputedStyle(h).marginTop);
-        const group = rect(p).bottom - start + (nx.tagName === 'FIGURE' ? rect(nx).height + margins(nx) : 0);
+        const group = rect(p).bottom - start + (/^(FIGURE|BLOCKQUOTE)$/.test(nx.tagName) ? rect(nx).height + margins(nx) : 0);
         if (nx.tagName === 'PRE') Object.assign(item, cutFor(nx, a.bottom - rect(p).bottom - 16) || {});
         if (!item.split && ((start - a.top) / a.height < 0.6 || group > a.height)) item.kind = 'heading-lead-kept';
         issues.push(item);

@@ -135,7 +135,7 @@ def figure(src, caption):
 # moves whole to the next line and leaves wide gaps in the justified line before it.
 LONG_TOKEN = re.compile(r"[\w.:/-]{10,}")
 # A call such as SERDE_SERVICE(StorageSerde, ...) or LOG(FATAL) may wrap after its parenthesis (never after Hangul).
-CALL_PAREN = re.compile(r"(?<=[A-Za-z0-9_]{3})\((?=[A-Za-z_])")
+CALL_PAREN = re.compile(r"(?<=[A-Za-z0-9_]{3})\((?=[A-Za-z_][^)\s]*\))")
 # No break after the dot of a file extension, so that `h` or `cpp` never stands alone on a line: the
 # listed extensions, and the last dot of a name when one to five letters and digits end it (.jsonl).
 # No break after the :// of a URL either, which would leave `https://` alone at a line end, nor in
@@ -153,7 +153,7 @@ UNIT = (r"(?:[KMGTP]i?B(?:/s)?|Gbps|[KMGTP]?FLOPS|[KMG]?Hz|ms|ns|us|µs)(?![A-Za
 NUM_UNIT = rf"\d[\d,.]*(?: ?(?:{UNIT})| [가-힣]{{1,3}})"
 # Kept on one line: the -- of a flag with its first word, and a date. (A line range such as
 # 1531-1537 may still break after its hyphen: kept whole, it stretches more justified lines.)
-NOBR = re.compile(r"(?<![\w-])--[A-Za-z][A-Za-z0-9]*|(?<![\d-])\d{4}-\d{2}-\d{2}(?![\d-])"
+NOBR = re.compile(r"(?<![\w-])--[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*|(?<![\d-])\d{4}-\d{2}-\d{2}(?![\d-])"
                   # A chapter introduction as a place (9장 도입), like a section number.
                   r"|(?<![\w.])\d+장 도입"
                   # An expression such as 8 × 312 TFLOPS or 99 × 8 × 8 = 6,336개 (see nobr), a number
@@ -227,7 +227,7 @@ INLINE_GAP = re.compile(rf"(</{INLINE}>)([ \t]+)(?=<(?:{INLINE}[\s>]|wbr>))")
 LAST_WORDS = re.compile("(?:(?<=[\\s>\u2060])([가-힣]{1,6}) )?(?<=[\\s>\u2060])([가-힣]{2,6}[.?!]?[\"”’)]?)(?=</p>)")
 
 
-NUM_HANGUL = re.compile(r"(?<![\w.])\d[\d,.]*[가-힣]{1,4}")
+NUM_HANGUL = re.compile(r"(?<![\w.])(?:\d[\d,.]*[가-힣]{1,4}|[A-Za-z][A-Za-z0-9]{0,11}[가-힣]{1,2}(?![가-힣]))")
 
 
 def pieces(text):
@@ -269,7 +269,8 @@ def add_breaks(body):
         part = "".join(s if s.startswith("<") or depth(part, k) else NUM_HANGUL.sub(r'<span class="nobr">\g<0></span>', s)
                        for k, s in pieces(part))
         part = re.sub(r'(<span class="nobr">[^<]*)</span>([가-힣]{1,2})(?![가-힣])', r"\1\2</span>", part)
-        part = re.sub(r"&lt;[^&<>]{1,24}&gt;", lambda m: f'<span class="nobr">{m.group(0)}</span>', part)
+        part = re.sub(r"&lt;(?:[^&<>]|<wbr>){1,40}?&gt;", lambda m: m.group(0) if len(m.group(0).replace("<wbr>", "")) > 32
+                      else f'<span class="nobr">{m.group(0).replace("<wbr>", "")}</span>', part)
         out.append(part)
     return "".join(out)
 
@@ -299,10 +300,18 @@ def short_cell_code(body, limit=SHORT_CODE):
     `mooncake-store/` would make a narrow first column."""
     def code(m):
         if len(html.unescape(re.sub(r"<[^>]+>", "", m.group(1)))) > limit:
-            return m.group(0)
+            # A longer one breaks only at its <wbr>: each part stays whole (mooncake-common/<wbr>k8s-lease/).
+            parts = m.group(1).split("<wbr>")
+            return "<code>" + "<wbr>".join(f'<span class="nobr">{s}</span>' if "-" in re.sub(r"<[^>]+>", "", s) and
+                                           s.count("<span") == s.count("</span>") else s for s in parts) + "</code>"
         return f'<code class="nobr">{m.group(1).replace("<wbr>", "")}</code>'
-    return re.sub(r"<t([dh])\b([^>]*)>([\s\S]*?)</t\1>",
-                  lambda c: re.sub(r"<code>([\s\S]*?)</code>", code, c.group(0)), body)
+    def plain(m):   # a name in plain text (GetReplicaList, display_version) likewise
+        t = m.group(0).replace("<wbr>", "")
+        return f'<span class="nobr">{t}</span>' if len(t) <= limit else m.group(0)
+    def cell(c):
+        s = re.sub(r"<code>([\s\S]*?)</code>", code, c.group(0))
+        return re.sub(r"(?<![\w>])(?:[A-Za-z0-9_.:/-]+<wbr>)+[A-Za-z0-9_.:/-]+(?!\w)", plain, s)
+    return re.sub(r"<t([dh])\b([^>]*)>([\s\S]*?)</t\1>", cell, body)
 
 
 def convert(kind, name, text, puml_names, toc, slug):
@@ -780,6 +789,7 @@ def layout(html_path, pdf_path, report_path):
 # Five passes left listing cuts mid-page and one-row table parts in the 490-page Mooncake book;
 # eight let them settle.
 PASSES = 12
+SETTLE = 9   # from this pass on, fixes are only added (see main)
 SHORT_TABLE = 6  # body rows: a table this short that would leave one row alone on a page is kept whole
 
 
@@ -833,6 +843,8 @@ def fixes_for(issues):
             rules.append((sel, "break-before", "page", "heading"))
         elif i["kind"] == "heading-lead-at-bottom" and not i.get("split"):
             rules.append((sel, "break-before", "page", "lead"))
+        elif i["kind"] == "intro-at-bottom":
+            rules.append((sel, "break-before", "page", "intro"))
         elif i["kind"] == "wide-gaps":
             rules.append((sel, "text-justify", "inter-character", "spacing"))
         elif i["kind"] == "overflow-x" and i["what"].startswith("table"):
@@ -866,11 +878,15 @@ class Fixes:
     def breaks(self):
         """The page breaks that fixes forced, for the page checks to take back when no longer needed."""
         return [{"sel": sel, "why": why} for (sel, prop), (val, why) in self.rules.items()
-                if prop == "break-before" and why in ("heading", "lead", "table", "row")]
+                if prop == "break-before" and why in ("heading", "lead", "table", "row", "intro")]
 
     def apply(self, rules, changes):
         for sel, prop, val, why in rules:
             if ("rule", sel) not in self.vetoed:
+                # A break before an introducing paragraph keeps its reason, so that a later rule for the
+                # same block does not change how the page checks take it back.
+                if self.rules.get((sel, prop), (None, None))[1] == "intro":
+                    continue
                 self.rules[(sel, prop)] = (val, why)
         for c in changes:
             if c[0] == "cut":
@@ -926,6 +942,10 @@ def main():
         html_path.write_text(doc, encoding="utf-8")
         info, issues, warnings, secs = layout(html_path, pdf, BUILD / f"{stem}-qa.txt")
         rules, changes = fixes_for(issues)
+        if attempt >= SETTLE:
+            # Late passes only add fixes: a take-back that the next layout undoes again would make
+            # the passes swing between two layouts until PASSES runs out.
+            changes = [c for c in changes if c[0] not in ("drop", "unmove", "uncut")]
         before = fixes.state()
         kinds = {"rule": sum(fixes.rules.get((sel, prop), (None,))[0] != val for sel, prop, val, _ in rules)}
         for c in changes:
